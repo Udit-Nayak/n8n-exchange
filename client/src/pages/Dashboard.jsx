@@ -15,28 +15,63 @@ function StatCard({ label, value, color, icon }) {
         borderRadius: "var(--radius-md)",
         padding: "18px 22px",
         flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+        position: "relative",
+        overflow: "hidden",
       }}
     >
-      <div style={{ fontSize: 22, marginBottom: 8 }}>{icon}</div>
+      {/* Subtle gradient background */}
       <div
         style={{
-          color,
-          fontSize: 28,
-          fontWeight: 700,
-          fontFamily: "var(--font-display)",
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: `radial-gradient(circle at 50% 0%, ${color}08, transparent 70%)`,
+          pointerEvents: "none",
         }}
-      >
-        {value}
-      </div>
-      <div
-        style={{
-          color: "var(--text-primary)",
-          fontSize: 11,
-          marginTop: 4,
-          opacity: 0.7,
-        }}
-      >
-        {label}
+      />
+      
+      {/* Content */}
+      <div style={{ position: "relative", zIndex: 1 }}>
+        <div 
+          style={{ 
+            fontSize: 28, 
+            marginBottom: 8,
+            filter: `drop-shadow(0 0 8px ${color}40)`,
+          }}
+        >
+          {icon}
+        </div>
+        <div
+          style={{
+            color,
+            fontSize: 32,
+            fontWeight: 800,
+            fontFamily: "var(--font-display)",
+            letterSpacing: 1,
+            lineHeight: 1,
+            marginBottom: 6,
+          }}
+        >
+          {value}
+        </div>
+        <div
+          style={{
+            color: "var(--text-secondary)",
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: 0.5,
+            textTransform: "uppercase",
+          }}
+        >
+          {label}
+        </div>
       </div>
     </div>
   );
@@ -478,13 +513,11 @@ export default function Dashboard() {
             label="Total Workflows"
             value={workflows.length}
             color="var(--accent-blue)"
-            icon="⬡"
           />
           <StatCard
             label="Active Now"
             value={activeCount}
             color="var(--accent-green)"
-            icon="▶"
           />
           <PriceWidget />
         </div>

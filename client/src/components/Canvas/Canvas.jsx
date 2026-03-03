@@ -343,6 +343,19 @@ export default function Canvas({
     }
   }
 
+  // ── Delete edge ────────────────────────────────────────────────────────────
+  function handleDeleteEdge(edgeId) {
+    const edge = edges.find((e) => e.id === edgeId);
+    if (!edge) return;
+    const srcNode = nodes.find((n) => n.id === edge.source);
+    const tgtNode = nodes.find((n) => n.id === edge.target);
+    setEdges((prev) => prev.filter((e) => e.id !== edgeId));
+    addLog(
+      `Connection deleted → [${NODE_TYPES[srcNode.type].label}] ✕ [${NODE_TYPES[tgtNode.type].label}]`,
+      "warn",
+    );
+  }
+
   // ── Config change for a node ───────────────────────────────────────────────
   function handleConfigChange(nodeId, key, value) {
     const node = nodes.find((n) => n.id === nodeId);
@@ -549,6 +562,7 @@ export default function Canvas({
           connecting={connecting}
           mousePos={mousePos}
           isActive={isActive}
+          onDeleteEdge={handleDeleteEdge}
         />
 
         {/* Node cards */}
