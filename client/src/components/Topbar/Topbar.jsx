@@ -15,6 +15,8 @@ export default function Topbar({
   nodeCount,
   edgeCount,
   isBuilder,
+  onNavigateToDashboard,
+  hasUnsavedChanges,
 }) {
   const location = useLocation();
   const { user, logout } = useAuth();
@@ -118,12 +120,20 @@ export default function Topbar({
               alignItems: "center",
             }}
           >
-            <Link
-              to="/"
-              style={{ color: "var(--text-secondary)", fontSize: 11 }}
+            <button
+              onClick={onNavigateToDashboard}
+              style={{
+                background: "none",
+                border: "none",
+                color: hasUnsavedChanges ? "var(--accent-yellow)" : "var(--text-secondary)",
+                fontSize: 11,
+                cursor: "pointer",
+                padding: 0,
+                fontFamily: "inherit",
+              }}
             >
-              ← Dashboard
-            </Link>
+              ← Dashboard{hasUnsavedChanges ? " (unsaved)" : ""}
+            </button>
           </div>
           <div
             style={{

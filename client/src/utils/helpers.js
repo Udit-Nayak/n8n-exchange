@@ -1,3 +1,5 @@
+import { NODE_TYPES } from '../constants/nodeTypes'
+
 // ─── ID generation ────────────────────────────────────────────────────────────
 export function genId(prefix = "id") {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -37,8 +39,18 @@ export function clamp(val, min, max) {
 // ─── Get port position for a node ────────────────────────────────────────────
 // kind: 'out' = right side (trigger), 'in' = left side (action)
 // Ports are 18px circles positioned with CSS left/right: -10, top: 50%
-export function getPortPos(node, kind, nodeWidth = 220, nodeHeight = 175) {
+export function getPortPos(node, kind, nodeWidth = 220) {
   if (!node) return { x: 0, y: 0 };
+
+  // Calculate actual node height based on number of fields
+  // Header: ~45px, Config padding: ~20px, Each field: ~35px, Gap between fields: ~6px
+  const nodeDef = NODE_TYPES[node.type];
+  const numFields = nodeDef?.fields?.length || 2; // Default to 2 if not found
+  const headerHeight = 52;
+  const configPadding = 20;
+  const fieldHeight = 35;
+  const gapHeight = 6;
+  const nodeHeight = headerHeight + configPadding + (numFields * fieldHeight) + ((numFields - 1) * gapHeight);
 
   // Right port (output): right: -10 means extends 10px beyond node's right edge
   // Port is 18px wide, so center is at: node.x + 230 - 9 = node.x + 221

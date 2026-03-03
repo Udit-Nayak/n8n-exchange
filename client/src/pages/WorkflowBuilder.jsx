@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { NODE_TYPES } from "../constants/nodeTypes";
 import { genId } from "../utils/helpers";
@@ -29,6 +29,30 @@ export default function WorkflowBuilder() {
   const [nodes, setNodes] = useState(existing?.nodes || []);
   const [edges, setEdges] = useState(existing?.edges || []);
   const [isActive, setIsActive] = useState(existing?.isActive || false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+
+  // Skip marking as unsaved on initial load
+  useEffect(() => {
+    if (isInitialLoad) {
+      setIsInitialLoad(false);
+      return;
+    }
+    setHasUnsavedChanges(true);
+  }, [workflowName, nodes, edges, isInitialLoad]);
+
+  // Warn before closing tab/window with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = ""; // Required for Chrome
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedChanges]);
 
   // ── Activation logic with validation ──────────────────────────────────────
   function handleActivate() {
@@ -88,7 +112,23 @@ export default function WorkflowBuilder() {
       lastRun: existing?.lastRun || null,
     };
     saveWorkflow(wf);
+    setHasUnsavedChanges(false);
     if (id === "new") navigate(`/builder/${wf.id}`);
+  }
+
+  // ── Handle navigation with unsaved changes check ───────────────────────────
+  function handleNavigateToDashboard(e) {
+    if (hasUnsavedChanges) {
+      const confirmed = window.confirm(
+        "You have unsaved changes. Are you sure you want to leave without saving?"
+      );
+      if (!confirmed) {
+        e?.preventDefault();
+        return false;
+      }
+    }
+    navigate("/");
+    return true;
   }
 
   // ── Clear canvas ───────────────────────────────────────────────────────────
@@ -117,6 +157,8 @@ export default function WorkflowBuilder() {
         isActive={isActive}
         nodeCount={nodes.length}
         edgeCount={edges.length}
+        onNavigateToDashboard={handleNavigateToDashboard}
+        hasUnsavedChanges={hasUnsavedChanges}
       />
 
       {/* Builder toolbar strip */}

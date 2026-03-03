@@ -524,9 +524,28 @@ export default function Dashboard() {
                 ⚡
               </div>
               No workflows yet.{" "}
-              <Link to="/builder/new" style={{ color: "var(--accent-yellow)" }}>
-                Create your first one →
+              <Link to="/builder/new" style={{ color: "var(--accent-yellow)", marginRight: 15 }}>
+                Create one 
               </Link>
+
+              <Link to="/builder/new">
+            <button
+              style={{
+                background: "linear-gradient(135deg, #f59e0b22, #ef444422)",
+                border: "1px solid var(--accent-yellow)",
+                color: "var(--accent-yellow)",
+                padding: "7px 18px",
+                borderRadius: "var(--radius-sm)",
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: 1,
+                cursor: "pointer",
+                fontFamily: "var(--font-mono)",
+              }}
+            >
+              + NEW WORKFLOW
+            </button>
+          </Link>
             </div>
           ) : (
             <div

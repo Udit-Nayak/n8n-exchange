@@ -93,7 +93,7 @@ export default function Profile() {
           {/* Wallet Card */}
           <div style={{
             background: 'linear-gradient(135deg, #f59e0b11, #ef444411)',
-            border: '1px solid var(--accent-yellow)',
+            border: '1px solid ',
             borderRadius: 'var(--radius-lg)',
             padding: 24,
             marginBottom: 24,
@@ -120,9 +120,7 @@ export default function Profile() {
                 </div>
               </div>
             </div>
-            <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-              💡 Virtual balance for simulated trading. No real money involved.
-            </div>
+            
           </div>
 
           {/* Profile Information */}
