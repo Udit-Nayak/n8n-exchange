@@ -216,7 +216,10 @@ export const getPortfolio = async (req, res) => {
   try {
     const userId = req.user.uid;
 
-    const user = await User.findOne({ uid: userId }).select("uid email displayName wallet").lean();
+    // Fetch user data including preferences
+    const user = await User.findOne({ uid: userId })
+      .select("uid email displayName wallet preferences photoURL")
+      .lean();
 
     if (!user) {
       return res.status(404).json({
@@ -248,7 +251,9 @@ export const getPortfolio = async (req, res) => {
           uid: user.uid,
           email: user.email,
           displayName: user.displayName,
+          photoURL: user.photoURL,
           wallet: user.wallet,
+          preferences: user.preferences,
         },
         portfolio: {
           holdings: portfolio.holdings,
