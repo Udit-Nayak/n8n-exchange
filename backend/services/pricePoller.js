@@ -1,12 +1,6 @@
 import axios from "axios";
 import EventEmitter from "events";
-import {
-  MarketPrice,
-  PriceHistory,
-  Portfolio,
-  SystemConfig,
-  Log,
-} from "../models/index.js";
+import { MarketPrice, PriceHistory, Portfolio, SystemConfig, Log } from "../models/index.js";
 
 class PricePollingService extends EventEmitter {
   constructor() {
@@ -23,10 +17,7 @@ class PricePollingService extends EventEmitter {
     try {
       // Load configuration
       const pollInterval = await SystemConfig.get("PRICE_POLL_INTERVAL", 10000);
-      const symbols = await SystemConfig.get(
-        "SUPPORTED_SYMBOLS",
-        this.supportedSymbols,
-      );
+      const symbols = await SystemConfig.get("SUPPORTED_SYMBOLS", this.supportedSymbols);
 
       this.pollIntervalMs = pollInterval;
       this.supportedSymbols = symbols;
@@ -101,7 +92,7 @@ class PricePollingService extends EventEmitter {
             symbol: this.supportedSymbols.join(","),
             convert: "USD",
           },
-        },
+        }
       );
 
       const data = response.data.data;
@@ -131,11 +122,10 @@ class PricePollingService extends EventEmitter {
         };
 
         // Update or create market price
-        await MarketPrice.findOneAndUpdate(
-          { symbol: coinData.symbol },
-          priceData,
-          { upsert: true, returnDocument: "after" },
-        );
+        await MarketPrice.findOneAndUpdate({ symbol: coinData.symbol }, priceData, {
+          upsert: true,
+          returnDocument: "after",
+        });
 
         priceMap[symbol] = quote.price;
         fullPriceData[symbol] = {
@@ -144,8 +134,12 @@ class PricePollingService extends EventEmitter {
           percentChange24h: quote.percent_change_24h,
         };
 
-        // Add to price history (1m interval)
-        await this.addToPriceHistory(symbol, quote.price, quote.volume_24h);
+        // Add to price history (1m interval) - don't let errors stop polling
+        try {
+          await this.addToPriceHistory(symbol, quote.price, quote.volume_24h);
+        } catch (err) {
+          // Silently continue - already logged in addToPriceHistory
+        }
       }
 
       // Update all user portfolios with new prices
@@ -158,9 +152,15 @@ class PricePollingService extends EventEmitter {
       // console.log(`📈 Prices updated: ${Object.keys(priceMap).length} symbols`);
     } catch (error) {
       console.error("❌ Failed to fetch prices:", error.message);
-      await Log.error("price", "Failed to fetch prices from CoinMarketCap", {
-        metadata: { error: error.message },
-      });
+      // Don't crash the service - just log the error
+      try {
+        await Log.error("price", "Failed to fetch prices from CoinMarketCap", {
+          metadata: { error: error.message },
+        });
+      } catch (logError) {
+        // If even logging fails, just console.error it
+        console.error("Failed to log error:", logError.message);
+      }
     }
   }
 
@@ -212,8 +212,12 @@ class PricePollingService extends EventEmitter {
           percentChange24h,
         };
 
-        // Add to price history
-        await this.addToPriceHistory(symbol, price, priceData.volume24h);
+        // Add to price history - don't let errors stop polling
+        try {
+          await this.addToPriceHistory(symbol, price, priceData.volume24h);
+        } catch (err) {
+          // Silently continue - already logged in addToPriceHistory
+        }
       }
 
       // Update all user portfolios with new prices
@@ -225,27 +229,51 @@ class PricePollingService extends EventEmitter {
       // Silently update prices (uncomment line below for debugging)
       // console.log(`📈 Mock prices updated: ${Object.keys(priceMap).length} symbols`);
     } catch (error) {
-      console.error("❌ Failed to fetch mock prices:", error);
+      console.error("❌ Failed to fetch mock prices:", error.message);
+      // Don't crash - continue polling
     }
   }
 
-  // Add price data to history
-  async addToPriceHistory(symbol, price, volume) {
+  // Add price data to history with retry logic
+  async addToPriceHistory(symbol, price, volume, retries = 3) {
     try {
-      // Add to 1-minute interval
-      let history = await PriceHistory.findOne({ symbol, interval: "1m" });
+      const newDataPoint = {
+        price,
+        timestamp: new Date(),
+        volume,
+      };
 
-      if (!history) {
-        history = new PriceHistory({
-          symbol,
-          interval: "1m",
-          dataPoints: [],
-        });
+      // Use atomic findOneAndUpdate to avoid version conflicts
+      const result = await PriceHistory.findOneAndUpdate(
+        { symbol, interval: "1m" },
+        {
+          $push: {
+            dataPoints: {
+              $each: [newDataPoint],
+              $slice: -1000, // Keep only last 1000 data points
+            },
+          },
+          $set: { lastUpdated: new Date() },
+        },
+        {
+          upsert: true,
+          returnDocument: "after",
+          runValidators: true,
+        }
+      );
+
+      return result;
+    } catch (error) {
+      // Retry on version errors or duplicate key errors
+      if ((error.name === "VersionError" || error.code === 11000) && retries > 0) {
+        const delay = Math.pow(2, 3 - retries) * 100; // Exponential backoff: 100ms, 200ms, 400ms
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        return this.addToPriceHistory(symbol, price, volume, retries - 1);
       }
 
-      await history.addDataPoint(price, volume);
-    } catch (error) {
-      console.error(`❌ Failed to add price history for ${symbol}:`, error);
+      console.error(`❌ Failed to add price history for ${symbol}:`, error.message);
+      // Don't throw - just log the error to prevent crashing the polling service
+      return null;
     }
   }
 
@@ -255,9 +283,7 @@ class PricePollingService extends EventEmitter {
       const portfolios = await Portfolio.find({});
 
       for (const portfolio of portfolios) {
-        const hasRelevantHoldings = portfolio.holdings.some(
-          (h) => priceMap[h.symbol],
-        );
+        const hasRelevantHoldings = portfolio.holdings.some((h) => priceMap[h.symbol]);
 
         if (hasRelevantHoldings) {
           await portfolio.updatePrices(priceMap);

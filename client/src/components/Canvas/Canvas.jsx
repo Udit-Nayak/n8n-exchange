@@ -4,14 +4,7 @@ import { genId as generateId } from "../../utils/helpers";
 import NodeCard from "./NodeCard";
 import EdgeLayer from "./EdgeLayer";
 
-export default function Canvas({
-  nodes,
-  setNodes,
-  edges,
-  setEdges,
-  addLog,
-  isActive,
-}) {
+export default function Canvas({ nodes, setNodes, edges, setEdges, addLog, isActive }) {
   const canvasRef = useRef(null);
   const contentRef = useRef(null);
   const [selected, setSelected] = useState(null);
@@ -59,9 +52,7 @@ export default function Canvas({
     }
 
     // Build a flow-based layout using graph structure
-    const nodeMap = new Map(
-      nodes.map((n) => [n.id, { ...n, level: -1, processed: false }]),
-    );
+    const nodeMap = new Map(nodes.map((n) => [n.id, { ...n, level: -1, processed: false }]));
     const outgoing = new Map(); // nodeId -> [targetIds]
     const incoming = new Map(); // nodeId -> [sourceIds]
 
@@ -80,9 +71,7 @@ export default function Canvas({
 
     // If no roots found (circular or all connected), use trigger nodes as roots
     const startNodes =
-      roots.length > 0
-        ? roots
-        : nodes.filter((n) => NODE_TYPES[n.type]?.kind === "trigger");
+      roots.length > 0 ? roots : nodes.filter((n) => NODE_TYPES[n.type]?.kind === "trigger");
 
     // BFS to assign levels
     const queue = startNodes.map((n) => n.id);
@@ -198,7 +187,7 @@ export default function Canvas({
     setNodes((prev) => [...prev, newNode]);
     addLog(
       `Node created → [${def.label}] (${def.kind.toUpperCase()}) at (${Math.round(x)}, ${Math.round(y)})`,
-      "success",
+      "success"
     );
   }
 
@@ -226,7 +215,7 @@ export default function Canvas({
     setMousePos({ x, y });
     addLog(
       `Connecting from [${NODE_TYPES[node.type].label}] — drag to any node's input port (left ●)`,
-      "warn",
+      "warn"
     );
   }
 
@@ -242,7 +231,7 @@ export default function Canvas({
     const alreadyExists = edges.find(
       (e) =>
         (e.source === connecting.nodeId && e.target === targetId) ||
-        (e.source === targetId && e.target === connecting.nodeId),
+        (e.source === targetId && e.target === connecting.nodeId)
     );
     if (alreadyExists) {
       addLog("Connection already exists between these nodes.", "warn");
@@ -260,7 +249,7 @@ export default function Canvas({
     setEdges((prev) => [...prev, newEdge]);
     addLog(
       `Connected → [${NODE_TYPES[srcNode.type].label}] ──► [${NODE_TYPES[tgtNode.type].label}]`,
-      "success",
+      "success"
     );
     setConnecting(null);
   }
@@ -276,8 +265,8 @@ export default function Canvas({
         prev.map((n) =>
           n.id === dragging.nodeId
             ? { ...n, x: coords.x - dragging.ox, y: coords.y - dragging.oy }
-            : n,
-        ),
+            : n
+        )
       );
     }
 
@@ -313,15 +302,12 @@ export default function Canvas({
       if (node)
         addLog(
           `Node [${NODE_TYPES[node.type].label}] repositioned to (${Math.round(node.x)}, ${Math.round(node.y)})`,
-          "info",
+          "info"
         );
       setDragging(null);
     }
     if (connecting) {
-      addLog(
-        "Connection cancelled — drop on any node's input port (left ●).",
-        "warn",
-      );
+      addLog("Connection cancelled — drop on any node's input port (left ●).", "warn");
       setConnecting(null);
     }
     if (isPanning) {
@@ -335,9 +321,7 @@ export default function Canvas({
       const node = nodes.find((n) => n.id === selected);
       if (!node) return;
       setNodes((prev) => prev.filter((n) => n.id !== selected));
-      setEdges((prev) =>
-        prev.filter((e) => e.source !== selected && e.target !== selected),
-      );
+      setEdges((prev) => prev.filter((e) => e.source !== selected && e.target !== selected));
       addLog(`Node [${NODE_TYPES[node.type].label}] deleted.`, "error");
       setSelected(null);
     }
@@ -352,7 +336,7 @@ export default function Canvas({
     setEdges((prev) => prev.filter((e) => e.id !== edgeId));
     addLog(
       `Connection deleted → [${NODE_TYPES[srcNode.type].label}] ✕ [${NODE_TYPES[tgtNode.type].label}]`,
-      "warn",
+      "warn"
     );
   }
 
@@ -360,14 +344,9 @@ export default function Canvas({
   function handleConfigChange(nodeId, key, value) {
     const node = nodes.find((n) => n.id === nodeId);
     setNodes((prev) =>
-      prev.map((n) =>
-        n.id === nodeId ? { ...n, config: { ...n.config, [key]: value } } : n,
-      ),
+      prev.map((n) => (n.id === nodeId ? { ...n, config: { ...n.config, [key]: value } } : n))
     );
-    addLog(
-      `[${NODE_TYPES[node.type].label}] config updated — ${key}: ${value}`,
-      "info",
-    );
+    addLog(`[${NODE_TYPES[node.type].label}] config updated — ${key}: ${value}`, "info");
   }
 
   return (
@@ -386,15 +365,8 @@ export default function Canvas({
         flex: 1,
         position: "relative",
         overflow: "hidden",
-        cursor: isPanning
-          ? "grabbing"
-          : connecting
-            ? "crosshair"
-            : dragging
-              ? "grabbing"
-              : "grab",
-        backgroundImage:
-          "radial-gradient(circle, #1e2433 1px, transparent 1px)",
+        cursor: isPanning ? "grabbing" : connecting ? "crosshair" : dragging ? "grabbing" : "grab",
+        backgroundImage: "radial-gradient(circle, #1e2433 1px, transparent 1px)",
         backgroundSize: "28px 28px",
         outline: "none",
       }}

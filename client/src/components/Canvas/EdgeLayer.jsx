@@ -1,21 +1,23 @@
-import { useState } from 'react'
-import { NODE_TYPES } from '../../constants/nodeTypes'
-import { bezierPath, getPortPos } from '../../utils/helpers'
+import { useState } from "react";
+import { NODE_TYPES } from "../../constants/nodeTypes";
+import { bezierPath, getPortPos } from "../../utils/helpers";
 
 export default function EdgeLayer({ nodes, edges, connecting, mousePos, isActive, onDeleteEdge }) {
-  const [hoveredEdge, setHoveredEdge] = useState(null)
+  const [hoveredEdge, setHoveredEdge] = useState(null);
 
   function getSrcNode(nodeId) {
-    return nodes.find(n => n.id === nodeId)
+    return nodes.find((n) => n.id === nodeId);
   }
 
   return (
     <svg
       style={{
-        position: 'absolute', inset: 0,
-        width: '100%', height: '100%',
-        pointerEvents: 'none',
-        overflow: 'visible',
+        position: "absolute",
+        inset: 0,
+        width: "100%",
+        height: "100%",
+        pointerEvents: "none",
+        overflow: "visible",
         zIndex: 3,
       }}
     >
@@ -26,34 +28,44 @@ export default function EdgeLayer({ nodes, edges, connecting, mousePos, isActive
             key={type}
             id={`arrow-${type}`}
             viewBox="0 0 10 10"
-            refX="9" refY="5"
-            markerWidth="6" markerHeight="6"
+            refX="9"
+            refY="5"
+            markerWidth="6"
+            markerHeight="6"
             orient="auto"
           >
             <path d="M 0 0 L 10 5 L 0 10 z" fill={def.color} />
           </marker>
         ))}
-        <marker id="arrow-connecting" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <marker
+          id="arrow-connecting"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="6"
+          markerHeight="6"
+          orient="auto"
+        >
           <path d="M 0 0 L 10 5 L 0 10 z" fill="#f59e0b" />
         </marker>
       </defs>
 
       {/* ── Existing edges ── */}
-      {edges.map(edge => {
-        const srcNode = getSrcNode(edge.source)
-        const tgtNode = getSrcNode(edge.target)
-        if (!srcNode || !tgtNode) return null
-        const def = NODE_TYPES[srcNode.type]
-        if (!def) return null
+      {edges.map((edge) => {
+        const srcNode = getSrcNode(edge.source);
+        const tgtNode = getSrcNode(edge.target);
+        if (!srcNode || !tgtNode) return null;
+        const def = NODE_TYPES[srcNode.type];
+        if (!def) return null;
 
-        const src = getPortPos(srcNode, 'out')
-        const tgt = getPortPos(tgtNode, 'in')
-        const path = bezierPath(src.x, src.y, tgt.x, tgt.y)
-        const isHovered = hoveredEdge === edge.id
+        const src = getPortPos(srcNode, "out");
+        const tgt = getPortPos(tgtNode, "in");
+        const path = bezierPath(src.x, src.y, tgt.x, tgt.y);
+        const isHovered = hoveredEdge === edge.id;
 
         // Calculate midpoint for delete button
-        const midX = (src.x + tgt.x) / 2
-        const midY = (src.y + tgt.y) / 2
+        const midX = (src.x + tgt.x) / 2;
+        const midY = (src.y + tgt.y) / 2;
 
         return (
           <g key={edge.id}>
@@ -63,7 +75,7 @@ export default function EdgeLayer({ nodes, edges, connecting, mousePos, isActive
               stroke="transparent"
               strokeWidth={20}
               fill="none"
-              style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+              style={{ pointerEvents: "stroke", cursor: "pointer" }}
               onMouseEnter={() => setHoveredEdge(edge.id)}
               onMouseLeave={() => setHoveredEdge(null)}
             />
@@ -74,7 +86,7 @@ export default function EdgeLayer({ nodes, edges, connecting, mousePos, isActive
               strokeWidth={isHovered ? 8 : 6}
               fill="none"
               opacity={isHovered ? 0.25 : 0.12}
-              style={{ pointerEvents: 'none', transition: 'all 0.2s' }}
+              style={{ pointerEvents: "none", transition: "all 0.2s" }}
             />
             {/* Main line */}
             <path
@@ -82,21 +94,21 @@ export default function EdgeLayer({ nodes, edges, connecting, mousePos, isActive
               stroke={def.color}
               strokeWidth={isHovered ? 2.5 : 1.8}
               fill="none"
-              strokeDasharray={isActive ? '8 4' : '6 5'}
+              strokeDasharray={isActive ? "8 4" : "6 5"}
               markerEnd={`url(#arrow-${srcNode.type})`}
               style={{
-                pointerEvents: 'none',
-                transition: 'stroke-width 0.2s',
-                animation: isActive ? 'flow 0.8s linear infinite' : 'none'
+                pointerEvents: "none",
+                transition: "stroke-width 0.2s",
+                animation: isActive ? "flow 0.8s linear infinite" : "none",
               }}
             />
             {/* Delete button */}
             {isHovered && (
               <g
-                style={{ cursor: 'pointer' }}
+                style={{ cursor: "pointer" }}
                 onClick={(e) => {
-                  e.stopPropagation()
-                  onDeleteEdge(edge.id)
+                  e.stopPropagation();
+                  onDeleteEdge(edge.id);
                 }}
                 onMouseEnter={() => setHoveredEdge(edge.id)}
               >
@@ -108,7 +120,7 @@ export default function EdgeLayer({ nodes, edges, connecting, mousePos, isActive
                   fill="var(--bg-surface)"
                   stroke="#ef4444"
                   strokeWidth={2}
-                  style={{ pointerEvents: 'all' }}
+                  style={{ pointerEvents: "all" }}
                 />
                 {/* Dustbin icon using path */}
                 <g transform={`translate(${midX - 6}, ${midY - 6})`}>
@@ -118,33 +130,34 @@ export default function EdgeLayer({ nodes, edges, connecting, mousePos, isActive
                     strokeWidth={1.2}
                     fill="none"
                     strokeLinecap="round"
-                    style={{ pointerEvents: 'none' }}
+                    style={{ pointerEvents: "none" }}
                   />
                 </g>
               </g>
             )}
           </g>
-        )
+        );
       })}
 
       {/* ── In-progress connection line ── */}
-      {connecting && (() => {
-        const srcNode = getSrcNode(connecting.nodeId)
-        if (!srcNode) return null
-        const src = getPortPos(srcNode, 'out')
-        const path = bezierPath(src.x, src.y, mousePos.x, mousePos.y)
-        return (
-          <path
-            d={path}
-            stroke="#f59e0b"
-            strokeWidth={1.5}
-            fill="none"
-            strokeDasharray="7 4"
-            markerEnd="url(#arrow-connecting)"
-            opacity={0.8}
-          />
-        )
-      })()}
+      {connecting &&
+        (() => {
+          const srcNode = getSrcNode(connecting.nodeId);
+          if (!srcNode) return null;
+          const src = getPortPos(srcNode, "out");
+          const path = bezierPath(src.x, src.y, mousePos.x, mousePos.y);
+          return (
+            <path
+              d={path}
+              stroke="#f59e0b"
+              strokeWidth={1.5}
+              fill="none"
+              strokeDasharray="7 4"
+              markerEnd="url(#arrow-connecting)"
+              opacity={0.8}
+            />
+          );
+        })()}
     </svg>
-  )
+  );
 }

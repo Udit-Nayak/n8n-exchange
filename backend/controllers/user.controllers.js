@@ -32,7 +32,7 @@ export const updateProfile = async (req, res) => {
     const user = await User.findOneAndUpdate(
       { uid: userId },
       { $set: updateData },
-      { new: true, runValidators: true }
+      { returnDocument: "after", runValidators: true }
     ).select("uid email displayName photoURL preferences wallet");
 
     if (!user) {

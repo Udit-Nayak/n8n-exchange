@@ -1,4 +1,4 @@
-import { NODE_TYPES } from '../constants/nodeTypes'
+import { NODE_TYPES } from "../constants/nodeTypes";
 
 // ─── ID generation ────────────────────────────────────────────────────────────
 export function genId(prefix = "id") {
@@ -50,7 +50,8 @@ export function getPortPos(node, kind, nodeWidth = 220) {
   const configPadding = 20;
   const fieldHeight = 35;
   const gapHeight = 6;
-  const nodeHeight = headerHeight + configPadding + (numFields * fieldHeight) + ((numFields - 1) * gapHeight);
+  const nodeHeight =
+    headerHeight + configPadding + numFields * fieldHeight + (numFields - 1) * gapHeight;
 
   // Right port (output): right: -10 means extends 10px beyond node's right edge
   // Port is 18px wide, so center is at: node.x + 230 - 9 = node.x + 221

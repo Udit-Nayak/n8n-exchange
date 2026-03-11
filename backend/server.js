@@ -8,6 +8,7 @@ import admin from "./config/firebase.js";
 import connectDB from "./config/db.js";
 import workflowExecutor from "./services/executor.js";
 import pricePollingService from "./services/pricePoller.js";
+import liquidationMonitor from "./services/liquidationMonitor.js";
 import { SystemConfig, NodeType, User, Portfolio } from "./models/index.js";
 
 dotenv.config();
@@ -16,28 +17,40 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const httpServer = createServer(app);
 
-// Socket.io setup
+// Socket.io setup with better error handling
 const io = new Server(httpServer, {
   cors: {
     origin: process.env.CLIENT_URL || "http://localhost:5173",
     methods: ["GET", "POST"],
     credentials: true,
   },
+  transports: ["websocket", "polling"],
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  allowEIO3: true,
+  connectTimeout: 45000,
+});
+
+// Handle Socket.io errors
+io.engine.on("connection_error", (err) => {
+  console.log("🔌 Socket.io connection error:", err.code, err.message);
 });
 
 // Verify Firebase initialization
 console.log("Firebase Admin initialized:", admin.apps.length ? "✓" : "✗");
 
 // Middleware
-app.use(cors({
-  origin: process.env.CLIENT_URL || "http://localhost:5173",
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    credentials: true,
+  })
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Make io accessible to routes
-app.set('io', io);
+app.set("io", io);
 
 // Routes
 app.get("/", (req, res) => {
@@ -54,8 +67,12 @@ app.use("/api", router);
 io.on("connection", (socket) => {
   console.log(`🔌 Client connected: ${socket.id}`);
 
-  socket.on("disconnect", () => {
-    console.log(`🔌 Client disconnected: ${socket.id}`);
+  socket.on("disconnect", (reason) => {
+    console.log(`🔌 Client disconnected: ${socket.id} (${reason})`);
+  });
+
+  socket.on("error", (error) => {
+    console.error(`🔌 Socket error for ${socket.id}:`, error.message);
   });
 
   // Join user-specific room for notifications
@@ -66,13 +83,13 @@ io.on("connection", (socket) => {
 });
 
 // Listen to price updates and broadcast via WebSocket
-pricePollingService.on('pricesUpdated', (priceMap) => {
-  io.emit('priceUpdate', priceMap);
+pricePollingService.on("pricesUpdated", (priceMap) => {
+  io.emit("priceUpdate", priceMap);
 });
 
 // Listen to workflow execution events
-workflowExecutor.on('workflowExecuted', (data) => {
-  io.to(`user-${data.workflow.userId}`).emit('workflowExecuted', {
+workflowExecutor.on("workflowExecuted", (data) => {
+  io.to(`user-${data.workflow.userId}`).emit("workflowExecuted", {
     workflowId: data.workflow._id,
     workflowName: data.workflow.name,
     executionId: data.execution._id,
@@ -80,46 +97,63 @@ workflowExecutor.on('workflowExecuted', (data) => {
   });
 });
 
+// Listen to liquidation events
+liquidationMonitor.on("positionLiquidated", (data) => {
+  io.to(`user-${data.position.userId}`).emit("positionLiquidated", {
+    positionId: data.position._id,
+    symbol: data.position.symbol,
+    type: data.position.type,
+    entryPrice: data.position.entryPrice,
+    liquidationPrice: data.position.liquidationPrice,
+    currentPrice: data.currentPrice,
+    collateralLost: data.collateralLost,
+  });
+});
+
 // Initialize services and start server
 async function startServer() {
   try {
-    console.log('\n🚀 Starting n8n Exchange Backend...\n');
+    console.log("\n🚀 Starting n8n Exchange Backend...\n");
 
     // 1. Connect to MongoDB
     await connectDB();
 
     // 2. Initialize system configuration
-    console.log('⚙️  Initializing system configuration...');
+    console.log("⚙️  Initializing system configuration...");
     await SystemConfig.initializeDefaults();
 
     // 3. Initialize node types
-    console.log('📦 Initializing node types...');
+    console.log("📦 Initializing node types...");
     await NodeType.initializeDefaults();
 
     // 4. Start price polling service
-    console.log('📊 Starting price polling service...');
+    console.log("📊 Starting price polling service...");
     await pricePollingService.initialize();
 
     // 5. Start workflow executor
-    console.log('⚡ Starting workflow executor...');
+    console.log("⚡ Starting workflow executor...");
     await workflowExecutor.initialize();
 
-    // 6. Start HTTP server
+    // 6. Start liquidation monitor
+    console.log("⚠️  Starting liquidation monitor...");
+    await liquidationMonitor.initialize();
+
+    // 7. Start HTTP server
     httpServer.listen(PORT, () => {
-      console.log('\n✅ Server ready!');
+      console.log("\n✅ Server ready!");
       console.log(`   HTTP Server: http://localhost:${PORT}`);
       console.log(`   WebSocket: ws://localhost:${PORT}`);
       console.log(`   Firebase Auth: Enabled`);
       console.log(`   MongoDB: Connected`);
-      console.log('\n📡 Services running:');
-      console.log('   - Price Polling Service');
-      console.log('   - Workflow Executor');
-      console.log('   - WebSocket Server');
-      console.log('\n✨ Ready to accept requests!\n');
+      console.log("\n📡 Services running:");
+      console.log("   - Price Polling Service");
+      console.log("   - Workflow Executor");
+      console.log("   - Liquidation Monitor");
+      console.log("   - WebSocket Server");
+      console.log("\n✨ Ready to accept requests!\n");
     });
-
   } catch (error) {
-    console.error('❌ Failed to start server:', error);
+    console.error("❌ Failed to start server:", error);
     process.exit(1);
   }
 }
@@ -131,39 +165,46 @@ async function gracefulShutdown(signal) {
   try {
     // Stop accepting new connections
     httpServer.close(() => {
-      console.log('✅ HTTP server closed');
+      console.log("✅ HTTP server closed");
     });
 
     // Shutdown services
     await workflowExecutor.shutdown();
     await pricePollingService.shutdown();
+    await liquidationMonitor.shutdown();
 
     // Close Socket.io
     io.close(() => {
-      console.log('✅ WebSocket server closed');
+      console.log("✅ WebSocket server closed");
     });
 
-    console.log('✅ Graceful shutdown completed');
+    console.log("✅ Graceful shutdown completed");
     process.exit(0);
   } catch (error) {
-    console.error('❌ Error during shutdown:', error);
+    console.error("❌ Error during shutdown:", error);
     process.exit(1);
   }
 }
 
 // Handle shutdown signals
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
-// Handle uncaught errors
-process.on('uncaughtException', (error) => {
-  console.error('❌ Uncaught Exception:', error);
-  gracefulShutdown('uncaughtException');
+// Handle uncaught errors - log but don't exit to keep server running
+process.on("uncaughtException", (error) => {
+  console.error("❌ Uncaught Exception:", error);
+  console.error("Stack:", error.stack);
+  // Don't exit - log and continue (unless it's a critical error)
+  if (error.code === "EADDRINUSE" || error.message.includes("MongoDB")) {
+    console.error("💥 Critical error detected, shutting down...");
+    gracefulShutdown("uncaughtException");
+  }
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-  gracefulShutdown('unhandledRejection');
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
+  // Log but don't exit - let the application continue running
+  console.error("⚠️  Server will continue running. Please fix the issue.");
 });
 
 // Start the server

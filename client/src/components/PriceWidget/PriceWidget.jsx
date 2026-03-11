@@ -13,10 +13,15 @@ export default function PriceWidget() {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    // Connect to Socket.IO server
+    // Connect to Socket.IO server with automatic reconnection
     const socket = io(SOCKET_URL, {
       transports: ["websocket", "polling"],
       path: "/socket.io",
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: Infinity,
+      timeout: 20000,
     });
 
     socket.on("connect", () => {
@@ -24,13 +29,23 @@ export default function PriceWidget() {
       setIsConnected(true);
     });
 
-    socket.on("disconnect", () => {
-      console.log("📊 Disconnected from price feed");
+    socket.on("disconnect", (reason) => {
+      console.log("📊 Disconnected from price feed:", reason);
       setIsConnected(false);
     });
 
     socket.on("connect_error", (error) => {
-      console.error("📊 Connection error:", error.message);
+      console.log("📊 Connection error (will retry):", error.message);
+      setIsConnected(false);
+    });
+
+    socket.on("reconnect_attempt", (attemptNumber) => {
+      console.log(`📊 Reconnection attempt ${attemptNumber}...`);
+    });
+
+    socket.on("reconnect", (attemptNumber) => {
+      console.log(`📊 Reconnected after ${attemptNumber} attempts`);
+      setIsConnected(true);
     });
 
     // Listen for price updates

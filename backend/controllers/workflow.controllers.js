@@ -166,7 +166,7 @@ export const updateWorkflow = async (req, res) => {
     if (edges !== undefined) updateData.edges = edges;
 
     const workflow = await Workflow.findOneAndUpdate({ _id: workflowId, userId }, updateData, {
-      new: true,
+      returnDocument: "after",
     });
 
     if (!workflow) {

@@ -45,7 +45,7 @@ const nodeTypeSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  },
+  }
 );
 
 // Indexes
@@ -185,6 +185,205 @@ nodeTypeSchema.statics.initializeDefaults = async function () {
         amountType: "percentage",
         amount: 50,
         useCurrentPrice: true,
+      },
+    },
+    {
+      type: "price-cross-above",
+      category: "trigger",
+      label: "Price Cross Above",
+      description: "Trigger when price crosses above a threshold",
+      icon: "📈",
+      color: "#10b981",
+      configSchema: {
+        symbol: { type: "string", required: true, label: "Symbol" },
+        targetPrice: { type: "number", required: true, label: "Target Price" },
+        pollInterval: {
+          type: "number",
+          default: 10000,
+          label: "Poll Interval (ms)",
+        },
+      },
+      defaultConfig: {
+        symbol: "BTC",
+        targetPrice: 50000,
+        pollInterval: 10000,
+      },
+    },
+    {
+      type: "price-cross-below",
+      category: "trigger",
+      label: "Price Cross Below",
+      description: "Trigger when price crosses below a threshold",
+      icon: "📉",
+      color: "#ef4444",
+      configSchema: {
+        symbol: { type: "string", required: true, label: "Symbol" },
+        targetPrice: { type: "number", required: true, label: "Target Price" },
+        pollInterval: {
+          type: "number",
+          default: 10000,
+          label: "Poll Interval (ms)",
+        },
+      },
+      defaultConfig: {
+        symbol: "BTC",
+        targetPrice: 45000,
+        pollInterval: 10000,
+      },
+    },
+    {
+      type: "stop-loss",
+      category: "trigger",
+      label: "Stop Loss",
+      description: "Automatically sell when price drops to limit losses",
+      icon: "🛡️",
+      color: "#dc2626",
+      configSchema: {
+        symbol: { type: "string", required: true, label: "Symbol" },
+        stopPrice: { type: "number", required: true, label: "Stop Price" },
+        pollInterval: {
+          type: "number",
+          default: 5000,
+          label: "Poll Interval (ms)",
+        },
+      },
+      defaultConfig: {
+        symbol: "BTC",
+        stopPrice: 45000,
+        pollInterval: 5000,
+      },
+    },
+    {
+      type: "take-profit",
+      category: "trigger",
+      label: "Take Profit",
+      description: "Automatically sell when price reaches profit target",
+      icon: "🎯",
+      color: "#16a34a",
+      configSchema: {
+        symbol: { type: "string", required: true, label: "Symbol" },
+        targetPrice: { type: "number", required: true, label: "Target Price" },
+        pollInterval: {
+          type: "number",
+          default: 5000,
+          label: "Poll Interval (ms)",
+        },
+      },
+      defaultConfig: {
+        symbol: "BTC",
+        targetPrice: 55000,
+        pollInterval: 5000,
+      },
+    },
+    {
+      type: "trailing-stop",
+      category: "trigger",
+      label: "Trailing Stop",
+      description: "Dynamic stop loss that follows price increases",
+      icon: "📊",
+      color: "#f59e0b",
+      configSchema: {
+        symbol: { type: "string", required: true, label: "Symbol" },
+        trailingPercent: {
+          type: "number",
+          required: true,
+          label: "Trailing Percentage",
+          min: 1,
+          max: 50,
+        },
+        pollInterval: {
+          type: "number",
+          default: 5000,
+          label: "Poll Interval (ms)",
+        },
+      },
+      defaultConfig: {
+        symbol: "BTC",
+        trailingPercent: 10,
+        pollInterval: 5000,
+      },
+    },
+    {
+      type: "long",
+      category: "action",
+      label: "Long (Leveraged Buy)",
+      description: "Open a leveraged long position",
+      icon: "📈",
+      color: "#22c55e",
+      configSchema: {
+        symbol: { type: "string", required: true, label: "Symbol" },
+        quantity: { type: "number", required: true, label: "Quantity" },
+        leverage: {
+          type: "number",
+          required: true,
+          label: "Leverage",
+          min: 1,
+          max: 20,
+        },
+        exchange: {
+          type: "string",
+          enum: ["lighter", "hyperliquid", "backpack"],
+          default: "lighter",
+          label: "Exchange",
+        },
+      },
+      defaultConfig: {
+        symbol: "SOL",
+        quantity: 1,
+        leverage: 5,
+        exchange: "lighter",
+      },
+    },
+    {
+      type: "short",
+      category: "action",
+      label: "Short (Leveraged Sell)",
+      description: "Open a leveraged short position",
+      icon: "📉",
+      color: "#ef4444",
+      configSchema: {
+        symbol: { type: "string", required: true, label: "Symbol" },
+        quantity: { type: "number", required: true, label: "Quantity" },
+        leverage: {
+          type: "number",
+          required: true,
+          label: "Leverage",
+          min: 1,
+          max: 20,
+        },
+        exchange: {
+          type: "string",
+          enum: ["lighter", "hyperliquid", "backpack"],
+          default: "lighter",
+          label: "Exchange",
+        },
+      },
+      defaultConfig: {
+        symbol: "SOL",
+        quantity: 1,
+        leverage: 5,
+        exchange: "lighter",
+      },
+    },
+    {
+      type: "close-position",
+      category: "action",
+      label: "Close Position",
+      description: "Close an open leveraged position",
+      icon: "🔒",
+      color: "#64748b",
+      configSchema: {
+        symbol: { type: "string", required: true, label: "Symbol" },
+        positionType: {
+          type: "string",
+          enum: ["long", "short", "all"],
+          default: "all",
+          label: "Position Type",
+        },
+      },
+      defaultConfig: {
+        symbol: "SOL",
+        positionType: "all",
       },
     },
     {

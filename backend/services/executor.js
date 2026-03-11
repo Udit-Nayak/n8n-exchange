@@ -1,12 +1,23 @@
-import cron from 'node-cron';
-import { Workflow, Execution, Transaction, Portfolio, User, MarketPrice, Log } from '../models/index.js';
-import EventEmitter from 'events';
+import cron from "node-cron";
+import {
+  Workflow,
+  Execution,
+  Transaction,
+  Portfolio,
+  User,
+  MarketPrice,
+  Log,
+  Position,
+} from "../models/index.js";
+import EventEmitter from "events";
 
 class WorkflowExecutor extends EventEmitter {
   constructor() {
     super();
     this.scheduledJobs = new Map(); // workflowId -> cron job
     this.priceMonitors = new Map(); // workflowId -> interval handle
+    this.priceState = new Map(); // jobKey -> { symbol, lastPrice, peakPrice, trailingPercent }
+    this.triggeredOnce = new Set(); // jobKey -> track if one-time triggers have fired
   }
 
   // Initialize executor: load all active workflows
@@ -19,10 +30,10 @@ class WorkflowExecutor extends EventEmitter {
         await this.scheduleWorkflow(workflow);
       }
 
-      console.log('✅ Workflow executor initialized');
+      console.log("✅ Workflow executor initialized");
     } catch (error) {
-      console.error('❌ Failed to initialize workflow executor:', error);
-      await Log.error('execution', 'Failed to initialize workflow executor', {
+      console.error("❌ Failed to initialize workflow executor:", error);
+      await Log.error("execution", "Failed to initialize workflow executor", {
         metadata: { error: error.message },
         stack: error.stack,
       });
@@ -35,20 +46,29 @@ class WorkflowExecutor extends EventEmitter {
       const triggerNodes = workflow.getTriggerNodes();
 
       for (const triggerNode of triggerNodes) {
-        if (triggerNode.type === 'timer') {
+        if (triggerNode.type === "timer") {
           await this.scheduleTimerTrigger(workflow, triggerNode);
-        } else if (triggerNode.type === 'price-monitor') {
+        } else if (
+          [
+            "price-monitor",
+            "price-cross-above",
+            "price-cross-below",
+            "stop-loss",
+            "take-profit",
+            "trailing-stop",
+          ].includes(triggerNode.type)
+        ) {
           await this.schedulePriceMonitor(workflow, triggerNode);
         }
       }
 
-      await Log.info('execution', `Workflow scheduled: ${workflow.name}`, {
+      await Log.info("execution", `Workflow scheduled: ${workflow.name}`, {
         workflowId: workflow._id,
         userId: workflow.userId,
       });
     } catch (error) {
       console.error(`❌ Failed to schedule workflow ${workflow._id}:`, error);
-      await Log.error('execution', `Failed to schedule workflow: ${workflow.name}`, {
+      await Log.error("execution", `Failed to schedule workflow: ${workflow.name}`, {
         workflowId: workflow._id,
         userId: workflow.userId,
         metadata: { error: error.message },
@@ -74,7 +94,7 @@ class WorkflowExecutor extends EventEmitter {
     // Create new cron job
     const job = cron.schedule(cronExpression, async () => {
       await this.executeWorkflow(workflow._id, {
-        triggerType: 'timer',
+        triggerType: "timer",
         triggerNodeId: triggerNode.id,
         cronExpression,
       });
@@ -94,15 +114,33 @@ class WorkflowExecutor extends EventEmitter {
     console.log(`⏰ Timer scheduled for workflow "${workflow.name}": ${cronExpression}`);
   }
 
-  // Schedule a price monitor trigger
+  // Schedule a price monitor trigger (handles all price-based triggers)
   async schedulePriceMonitor(workflow, triggerNode) {
-    const { symbol, condition, targetPrice, pollInterval = 10000 } = triggerNode.data;
+    const {
+      symbol,
+      condition,
+      targetPrice,
+      stopPrice,
+      trailingPercent,
+      pollInterval = 10000,
+    } = triggerNode.data;
     const jobKey = `${workflow._id}-${triggerNode.id}`;
+    const triggerType = triggerNode.type;
 
     // Remove existing monitor if any
     if (this.priceMonitors.has(jobKey)) {
       clearInterval(this.priceMonitors.get(jobKey));
+      this.priceState.delete(jobKey);
+      this.triggeredOnce.delete(jobKey);
     }
+
+    // Initialize price state
+    this.priceState.set(jobKey, {
+      symbol,
+      lastPrice: null,
+      peakPrice: null,
+      trailingPercent: trailingPercent || 0,
+    });
 
     // Create price monitoring interval
     const intervalHandle = setInterval(async () => {
@@ -111,29 +149,127 @@ class WorkflowExecutor extends EventEmitter {
         if (!marketPrice) return;
 
         const currentPrice = marketPrice.price;
-        let conditionMet = false;
+        const state = this.priceState.get(jobKey);
+        const previousPrice = state.lastPrice;
+        let shouldTrigger = false;
+        let triggerReason = "";
 
-        switch (condition) {
-          case 'above':
-            conditionMet = currentPrice > targetPrice;
+        // Initialize lastPrice on first run
+        if (previousPrice === null) {
+          state.lastPrice = currentPrice;
+          if (triggerType === "trailing-stop") {
+            state.peakPrice = currentPrice;
+          }
+          return;
+        }
+
+        // Handle different trigger types
+        switch (triggerType) {
+          case "price-monitor":
+            // Old behavior - static comparison
+            switch (condition) {
+              case "above":
+                shouldTrigger = currentPrice > targetPrice;
+                break;
+              case "below":
+                shouldTrigger = currentPrice < targetPrice;
+                break;
+              case "equals":
+                shouldTrigger = Math.abs(currentPrice - targetPrice) < 0.01;
+                break;
+            }
+            triggerReason = `Price ${condition} ${targetPrice}`;
             break;
-          case 'below':
-            conditionMet = currentPrice < targetPrice;
+
+          case "price-cross-above":
+            // Crossed FROM below TO above
+            if (previousPrice <= targetPrice && currentPrice > targetPrice) {
+              shouldTrigger = true;
+              triggerReason = `Price crossed above ${targetPrice} (${previousPrice.toFixed(2)} → ${currentPrice.toFixed(2)})`;
+              this.triggeredOnce.add(jobKey); // Mark as triggered
+            }
             break;
-          case 'equals':
-            conditionMet = Math.abs(currentPrice - targetPrice) < 0.01;
+
+          case "price-cross-below":
+            // Crossed FROM above TO below
+            if (previousPrice >= targetPrice && currentPrice < targetPrice) {
+              shouldTrigger = true;
+              triggerReason = `Price crossed below ${targetPrice} (${previousPrice.toFixed(2)} → ${currentPrice.toFixed(2)})`;
+              this.triggeredOnce.add(jobKey);
+            }
+            break;
+
+          case "stop-loss":
+            // Trigger when price drops below stop price
+            const stopTarget = stopPrice || targetPrice;
+            if (currentPrice <= stopTarget && !this.triggeredOnce.has(jobKey)) {
+              shouldTrigger = true;
+              triggerReason = `Stop loss triggered at ${currentPrice.toFixed(2)} (stop: ${stopTarget})`;
+              this.triggeredOnce.add(jobKey);
+            }
+            break;
+
+          case "take-profit":
+            // Trigger when price rises above target
+            const profitTarget = targetPrice;
+            if (currentPrice >= profitTarget && !this.triggeredOnce.has(jobKey)) {
+              shouldTrigger = true;
+              triggerReason = `Take profit triggered at ${currentPrice.toFixed(2)} (target: ${profitTarget})`;
+              this.triggeredOnce.add(jobKey);
+            }
+            break;
+
+          case "trailing-stop":
+            // Update peak price if current is higher
+            if (currentPrice > state.peakPrice) {
+              state.peakPrice = currentPrice;
+            }
+
+            // Calculate trailing stop price
+            const trailingStopPrice = state.peakPrice * (1 - state.trailingPercent / 100);
+
+            // Trigger if price drops below trailing stop
+            if (currentPrice <= trailingStopPrice && !this.triggeredOnce.has(jobKey)) {
+              shouldTrigger = true;
+              triggerReason = `Trailing stop triggered at ${currentPrice.toFixed(2)} (peak: ${state.peakPrice.toFixed(2)}, stop: ${trailingStopPrice.toFixed(2)}, trail: ${state.trailingPercent}%)`;
+              this.triggeredOnce.add(jobKey);
+            }
             break;
         }
 
-        if (conditionMet) {
+        // Update last price
+        state.lastPrice = currentPrice;
+
+        // Execute workflow if condition met
+        if (shouldTrigger) {
+          console.log(`🎯 ${triggerReason}`);
           await this.executeWorkflow(workflow._id, {
-            triggerType: 'price-monitor',
+            triggerType,
             triggerNodeId: triggerNode.id,
             symbol,
             currentPrice,
-            targetPrice,
+            previousPrice,
+            targetPrice: targetPrice || stopPrice,
             condition,
+            reason: triggerReason,
+            peakPrice: state.peakPrice,
           });
+
+          // For one-time triggers, unschedule after execution
+          if (
+            [
+              "price-cross-above",
+              "price-cross-below",
+              "stop-loss",
+              "take-profit",
+              "trailing-stop",
+            ].includes(triggerType)
+          ) {
+            console.log(`✅ One-time trigger fired, stopping monitor for ${jobKey}`);
+            clearInterval(intervalHandle);
+            this.priceMonitors.delete(jobKey);
+            this.priceState.delete(jobKey);
+          }
         }
       } catch (error) {
         console.error(`❌ Price monitor error for workflow ${workflow._id}:`, error);
@@ -141,7 +277,18 @@ class WorkflowExecutor extends EventEmitter {
     }, pollInterval);
 
     this.priceMonitors.set(jobKey, intervalHandle);
-    console.log(`📊 Price monitor scheduled for workflow "${workflow.name}": ${symbol} ${condition} ${targetPrice}`);
+    const typeLabel =
+      {
+        "price-monitor": "Price Monitor",
+        "price-cross-above": "Price Cross Above",
+        "price-cross-below": "Price Cross Below",
+        "stop-loss": "Stop Loss",
+        "take-profit": "Take Profit",
+        "trailing-stop": "Trailing Stop",
+      }[triggerType] || triggerType;
+    console.log(
+      `📊 ${typeLabel} scheduled for "${workflow.name}": ${symbol} @ ${targetPrice || stopPrice || "dynamic"}`
+    );
   }
 
   // Unschedule a workflow
@@ -193,13 +340,13 @@ class WorkflowExecutor extends EventEmitter {
       execution = new Execution({
         workflowId: workflow._id,
         userId: workflow.userId,
-        status: 'pending',
+        status: "pending",
         triggerType: triggerData.triggerType,
         triggerData,
         totalNodes: workflow.nodes.length,
         metadata: {
           triggerNodeId: triggerData.triggerNodeId,
-          executionMode: 'automatic',
+          executionMode: "automatic",
         },
       });
       await execution.save();
@@ -214,13 +361,13 @@ class WorkflowExecutor extends EventEmitter {
       await execution.complete(true);
       await workflow.incrementExecutionCount(true);
 
-      await Log.info('execution', `Workflow executed successfully: ${workflow.name}`, {
+      await Log.info("execution", `Workflow executed successfully: ${workflow.name}`, {
         workflowId: workflow._id,
         executionId: execution._id,
         userId: workflow.userId,
       });
 
-      this.emit('workflowExecuted', { workflow, execution });
+      this.emit("workflowExecuted", { workflow, execution });
     } catch (error) {
       console.error(`❌ Workflow execution failed (${workflowId}):`, error);
 
@@ -233,7 +380,7 @@ class WorkflowExecutor extends EventEmitter {
         await workflow.incrementExecutionCount(false);
       }
 
-      await Log.error('execution', `Workflow execution failed: ${workflowId}`, {
+      await Log.error("execution", `Workflow execution failed: ${workflowId}`, {
         workflowId,
         executionId: execution?._id,
         metadata: { error: error.message },
@@ -249,8 +396,8 @@ class WorkflowExecutor extends EventEmitter {
 
     // Build adjacency list for graph traversal
     const adjacencyList = new Map();
-    nodes.forEach(node => adjacencyList.set(node.id, []));
-    edges.forEach(edge => {
+    nodes.forEach((node) => adjacencyList.set(node.id, []));
+    edges.forEach((edge) => {
       if (adjacencyList.has(edge.source)) {
         adjacencyList.get(edge.source).push(edge.target);
       }
@@ -265,7 +412,7 @@ class WorkflowExecutor extends EventEmitter {
       if (visited.has(currentNodeId)) continue;
       visited.add(currentNodeId);
 
-      const node = nodes.find(n => n.id === currentNodeId);
+      const node = nodes.find((n) => n.id === currentNodeId);
       if (!node) continue;
 
       // Execute current node
@@ -273,7 +420,7 @@ class WorkflowExecutor extends EventEmitter {
       await execution.addNodeResult(nodeResult);
 
       // If node failed and it's critical, stop execution
-      if (nodeResult.status === 'failed' && node.type !== 'notify') {
+      if (nodeResult.status === "failed" && node.type !== "notify") {
         throw new Error(`Node execution failed: ${node.type} - ${nodeResult.error}`);
       }
 
@@ -289,45 +436,65 @@ class WorkflowExecutor extends EventEmitter {
     const result = {
       nodeId: node.id,
       nodeType: node.type,
-      status: 'running',
+      status: "running",
       input: node.data,
       executedAt: new Date(),
     };
 
     try {
       switch (node.type) {
-        case 'timer':
-        case 'price-monitor':
+        case "timer":
+        case "price-monitor":
+        case "price-cross-above":
+        case "price-cross-below":
+        case "stop-loss":
+        case "take-profit":
+        case "trailing-stop":
           result.output = { triggered: true, ...triggerData };
-          result.status = 'success';
+          result.status = "success";
           break;
 
-        case 'condition':
+        case "condition":
           result.output = await this.executeConditionNode(node, triggerData);
-          result.status = 'success';
+          result.status = "success";
           break;
 
-        case 'buy':
+        case "buy":
           result.output = await this.executeBuyNode(node, workflow, execution);
-          result.status = 'success';
+          result.status = "success";
           break;
 
-        case 'sell':
+        case "sell":
           result.output = await this.executeSellNode(node, workflow, execution);
-          result.status = 'success';
+          result.status = "success";
           break;
 
-        case 'notify':
+        case "long":
+          result.output = await this.executeLongNode(node, workflow, execution, triggerData);
+          result.status = "success";
+          break;
+
+        case "short":
+          result.output = await this.executeShortNode(node, workflow, execution, triggerData);
+          result.status = "success";
+          break;
+
+        case "close-position":
+          result.output = await this.executeClosePositionNode(node, workflow, execution);
+          result.status = "success";
+          break;
+
+        case "notify":
           result.output = await this.executeNotifyNode(node);
-          result.status = 'success';
+          result.status = "success";
           break;
 
         default:
-          result.status = 'skipped';
-          result.output = { message: 'Unknown node type' };
+          result.status = "skipped";
+          result.output = { message: "Unknown node type" };
       }
     } catch (error) {
-      result.status = 'failed';
+      result.status = "failed";
       result.error = error.message;
       console.error(`❌ Node execution failed (${node.type}):`, error);
     }
@@ -339,15 +506,15 @@ class WorkflowExecutor extends EventEmitter {
   // Execute condition node
   async executeConditionNode(node, triggerData) {
     const { operator, leftValue, rightValue } = node.data;
-    
+
     // Simple evaluation (can be enhanced with expression parser)
     let left = leftValue;
     let right = rightValue;
 
     // Replace {{currentPrice}} with actual value
     if (triggerData.currentPrice) {
-      left = left.toString().replace('{{currentPrice}}', triggerData.currentPrice);
-      right = right.toString().replace('{{currentPrice}}', triggerData.currentPrice);
+      left = left.toString().replace("{{currentPrice}}", triggerData.currentPrice);
+      right = right.toString().replace("{{currentPrice}}", triggerData.currentPrice);
     }
 
     const leftNum = parseFloat(left);
@@ -355,12 +522,24 @@ class WorkflowExecutor extends EventEmitter {
 
     let result = false;
     switch (operator) {
-      case '>': result = leftNum > rightNum; break;
-      case '<': result = leftNum < rightNum; break;
-      case '>=': result = leftNum >= rightNum; break;
-      case '<=': result = leftNum <= rightNum; break;
-      case '==': result = leftNum === rightNum; break;
-      case '!=': result = leftNum !== rightNum; break;
+      case ">":
+        result = leftNum > rightNum;
+        break;
+      case "<":
+        result = leftNum < rightNum;
+        break;
+      case ">=":
+        result = leftNum >= rightNum;
+        break;
+      case "<=":
+        result = leftNum <= rightNum;
+        break;
+      case "==":
+        result = leftNum === rightNum;
+        break;
+      case "!=":
+        result = leftNum !== rightNum;
+        break;
     }
 
     return { conditionMet: result, leftValue: leftNum, rightValue: rightNum, operator };
@@ -380,7 +559,7 @@ class WorkflowExecutor extends EventEmitter {
 
     // Get user and portfolio
     const user = await User.findOne({ uid: workflow.userId });
-    if (!user) throw new Error('User not found');
+    if (!user) throw new Error("User not found");
 
     let portfolio = await Portfolio.findOne({ userId: workflow.userId });
     if (!portfolio) {
@@ -393,15 +572,15 @@ class WorkflowExecutor extends EventEmitter {
     let totalAmount = 0;
 
     switch (amountType) {
-      case 'usd':
+      case "usd":
         totalAmount = amount;
         quantity = totalAmount / pricePerUnit;
         break;
-      case 'quantity':
+      case "quantity":
         quantity = amount;
         totalAmount = quantity * pricePerUnit;
         break;
-      case 'percentage':
+      case "percentage":
         totalAmount = (user.wallet.balance * amount) / 100;
         quantity = totalAmount / pricePerUnit;
         break;
@@ -409,7 +588,7 @@ class WorkflowExecutor extends EventEmitter {
 
     // Check if user has sufficient balance
     if (user.wallet.balance < totalAmount) {
-      throw new Error('Insufficient balance');
+      throw new Error("Insufficient balance");
     }
 
     // Create transaction
@@ -417,7 +596,7 @@ class WorkflowExecutor extends EventEmitter {
       userId: workflow.userId,
       workflowId: workflow._id,
       executionId: execution._id,
-      type: 'buy',
+      type: "buy",
       symbol,
       coinName: marketPrice.name,
       quantity,
@@ -427,7 +606,7 @@ class WorkflowExecutor extends EventEmitter {
       netAmount: totalAmount,
       balanceBefore: user.wallet.balance,
       balanceAfter: user.wallet.balance - totalAmount,
-      status: 'completed',
+      status: "completed",
       metadata: {
         triggerType: execution.triggerType,
         nodeId: node.id,
@@ -445,7 +624,7 @@ class WorkflowExecutor extends EventEmitter {
     console.log(`💰 BUY executed: ${quantity.toFixed(8)} ${symbol} @ $${pricePerUnit.toFixed(2)}`);
 
     return {
-      action: 'buy',
+      action: "buy",
       symbol,
       quantity,
       pricePerUnit,
@@ -468,31 +647,31 @@ class WorkflowExecutor extends EventEmitter {
 
     // Get user and portfolio
     const user = await User.findOne({ uid: workflow.userId });
-    if (!user) throw new Error('User not found');
+    if (!user) throw new Error("User not found");
 
     const portfolio = await Portfolio.findOne({ userId: workflow.userId });
-    if (!portfolio) throw new Error('Portfolio not found');
+    if (!portfolio) throw new Error("Portfolio not found");
 
-    const holding = portfolio.holdings.find(h => h.symbol === symbol);
+    const holding = portfolio.holdings.find((h) => h.symbol === symbol);
     if (!holding) throw new Error(`No holdings found for ${symbol}`);
 
     // Calculate quantity based on amount type
     let quantity = 0;
 
     switch (amountType) {
-      case 'quantity':
+      case "quantity":
         quantity = amount;
         break;
-      case 'percentage':
+      case "percentage":
         quantity = (holding.quantity * amount) / 100;
         break;
-      case 'all':
+      case "all":
         quantity = holding.quantity;
         break;
     }
 
     if (quantity > holding.quantity) {
-      throw new Error('Insufficient holdings');
+      throw new Error("Insufficient holdings");
     }
 
     const totalAmount = quantity * pricePerUnit;
@@ -502,7 +681,7 @@ class WorkflowExecutor extends EventEmitter {
       userId: workflow.userId,
       workflowId: workflow._id,
       executionId: execution._id,
-      type: 'sell',
+      type: "sell",
       symbol,
       coinName: marketPrice.name,
       quantity,
@@ -512,7 +691,7 @@ class WorkflowExecutor extends EventEmitter {
       netAmount: totalAmount,
       balanceBefore: user.wallet.balance,
       balanceAfter: user.wallet.balance + totalAmount,
-      status: 'completed',
+      status: "completed",
       metadata: {
         triggerType: execution.triggerType,
         nodeId: node.id,
@@ -530,7 +709,7 @@ class WorkflowExecutor extends EventEmitter {
     console.log(`💸 SELL executed: ${quantity.toFixed(8)} ${symbol} @ $${pricePerUnit.toFixed(2)}`);
 
     return {
-      action: 'sell',
+      action: "sell",
       symbol,
       quantity,
       pricePerUnit,
@@ -539,10 +718,232 @@ class WorkflowExecutor extends EventEmitter {
     };
   }
 
+  // Execute long (leveraged buy) node
+  async executeLongNode(node, workflow, execution, triggerData) {
+    const { symbol, quantity, leverage, exchange = "lighter" } = node.data;
+
+    // Get current market price
+    const marketPrice = await MarketPrice.findOne({ symbol });
+    if (!marketPrice) {
+      throw new Error(`Market price not found for ${symbol}`);
+    }
+
+    const entryPrice = triggerData.currentPrice || marketPrice.price;
+
+    // Get user
+    const user = await User.findOne({ uid: workflow.userId });
+    if (!user) throw new Error("User not found");
+
+    // Calculate position details
+    const positionValue = quantity * entryPrice;
+    const collateral = positionValue / leverage;
+
+    // Check if user has sufficient balance for collateral
+    if (user.wallet.balance < collateral) {
+      throw new Error(`Insufficient balance. Need ${collateral.toFixed(2)} USDT for collateral`);
+    }
+
+    // Create position
+    const position = new Position({
+      userId: workflow.userId,
+      workflowId: workflow._id,
+      executionId: execution._id,
+      symbol,
+      coinName: marketPrice.name,
+      type: "long",
+      leverage,
+      quantity,
+      entryPrice,
+      currentPrice: entryPrice,
+      collateral,
+      positionValue,
+      liquidationPrice: 0,
+      status: "open",
+      exchange,
+      metadata: {
+        orderType: "market",
+        triggerType: execution.triggerType,
+        nodeId: node.id,
+      },
+    });
+
+    // Calculate and set liquidation price
+    position.calculateLiquidationPrice();
+    await position.save();
+
+    // Deduct collateral from user balance
+    await user.updateBalance(-collateral);
+
+    console.log(
+      `📈 LONG opened: ${quantity} ${symbol} @ $${entryPrice.toFixed(2)} | ${leverage}x leverage | Liq: $${position.liquidationPrice.toFixed(2)}`
+    );
+
+    return {
+      action: "long",
+      positionId: position._id,
+      symbol,
+      quantity,
+      leverage,
+      entryPrice,
+      collateral,
+      positionValue,
+      liquidationPrice: position.liquidationPrice,
+      exchange,
+    };
+  }
+
+  // Execute short (leveraged sell) node
+  async executeShortNode(node, workflow, execution, triggerData) {
+    const { symbol, quantity, leverage, exchange = "lighter" } = node.data;
+
+    // Get current market price
+    const marketPrice = await MarketPrice.findOne({ symbol });
+    if (!marketPrice) {
+      throw new Error(`Market price not found for ${symbol}`);
+    }
+
+    const entryPrice = triggerData.currentPrice || marketPrice.price;
+
+    // Get user
+    const user = await User.findOne({ uid: workflow.userId });
+    if (!user) throw new Error("User not found");
+
+    // Calculate position details
+    const positionValue = quantity * entryPrice;
+    const collateral = positionValue / leverage;
+
+    // Check if user has sufficient balance for collateral
+    if (user.wallet.balance < collateral) {
+      throw new Error(`Insufficient balance. Need ${collateral.toFixed(2)} USDT for collateral`);
+    }
+
+    // Create position
+    const position = new Position({
+      userId: workflow.userId,
+      workflowId: workflow._id,
+      executionId: execution._id,
+      symbol,
+      coinName: marketPrice.name,
+      type: "short",
+      leverage,
+      quantity,
+      entryPrice,
+      currentPrice: entryPrice,
+      collateral,
+      positionValue,
+      liquidationPrice: 0,
+      status: "open",
+      exchange,
+      metadata: {
+        orderType: "market",
+        triggerType: execution.triggerType,
+        nodeId: node.id,
+      },
+    });
+
+    // Calculate and set liquidation price
+    position.calculateLiquidationPrice();
+    await position.save();
+
+    // Deduct collateral from user balance
+    await user.updateBalance(-collateral);
+
+    console.log(
+      `📉 SHORT opened: ${quantity} ${symbol} @ $${entryPrice.toFixed(2)} | ${leverage}x leverage | Liq: $${position.liquidationPrice.toFixed(2)}`
+    );
+
+    return {
+      action: "short",
+      positionId: position._id,
+      symbol,
+      quantity,
+      leverage,
+      entryPrice,
+      collateral,
+      positionValue,
+      liquidationPrice: position.liquidationPrice,
+      exchange,
+    };
+  }
+
+  // Execute close position node
+  async executeClosePositionNode(node, workflow, execution) {
+    const { symbol, positionType = "all" } = node.data;
+
+    // Get current market price
+    const marketPrice = await MarketPrice.findOne({ symbol });
+    if (!marketPrice) {
+      throw new Error(`Market price not found for ${symbol}`);
+    }
+
+    const currentPrice = marketPrice.price;
+
+    // Get user
+    const user = await User.findOne({ uid: workflow.userId });
+    if (!user) throw new Error("User not found");
+
+    // Find open positions
+    const query = { userId: workflow.userId, symbol, status: "open" };
+    if (positionType !== "all") {
+      query.type = positionType;
+    }
+
+    const positions = await Position.find(query);
+
+    if (positions.length === 0) {
+      throw new Error(`No open ${positionType} positions found for ${symbol}`);
+    }
+
+    const closedPositions = [];
+    let totalPnL = 0;
+    let totalCollateralReturned = 0;
+
+    // Close all matching positions
+    for (const position of positions) {
+      // Calculate PnL
+      position.calculateUnrealizedPnL(currentPrice);
+      const pnl = position.unrealizedPnL;
+      const collateralReturned = position.collateral + pnl;
+
+      // Close position
+      await position.close(currentPrice, "manual");
+
+      // Return collateral + PnL to user
+      await user.updateBalance(collateralReturned);
+
+      totalPnL += pnl;
+      totalCollateralReturned += collateralReturned;
+
+      closedPositions.push({
+        positionId: position._id,
+        type: position.type,
+        entryPrice: position.entryPrice,
+        exitPrice: currentPrice,
+        pnl,
+        collateralReturned,
+      });
+
+      const pnlSign = pnl >= 0 ? "+" : "";
+      console.log(
+        `🔒 ${position.type.toUpperCase()} closed: ${position.quantity} ${symbol} @ $${currentPrice.toFixed(2)} | PnL: ${pnlSign}$${pnl.toFixed(2)}`
+      );
+    }
+
+    return {
+      action: "close-position",
+      symbol,
+      positionType,
+      closedCount: positions.length,
+      totalPnL,
+      totalCollateralReturned,
+      positions: closedPositions,
+    };
+  }
+
   // Execute notify node
   async executeNotifyNode(node) {
     const { message, type } = node.data;
-    
+
     // In production, this would send actual notifications
     // For now, just log it
     console.log(`🔔 NOTIFICATION [${type}]: ${message}`);
@@ -559,7 +960,7 @@ class WorkflowExecutor extends EventEmitter {
 
   // Shutdown executor gracefully
   async shutdown() {
-    console.log('🛑 Shutting down workflow executor...');
+    console.log("🛑 Shutting down workflow executor...");
 
     // Stop all cron jobs
     for (const [jobKey, job] of this.scheduledJobs.entries()) {
@@ -576,7 +977,7 @@ class WorkflowExecutor extends EventEmitter {
     this.scheduledJobs.clear();
     this.priceMonitors.clear();
 
-    console.log('✅ Workflow executor shut down');
+    console.log("✅ Workflow executor shut down");
   }
 }
 
