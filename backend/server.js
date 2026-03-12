@@ -10,6 +10,7 @@ import workflowExecutor from "./services/executor.js";
 import pricePollingService from "./services/pricePoller.js";
 import liquidationMonitor from "./services/liquidationMonitor.js";
 import { SystemConfig, NodeType, User, Portfolio } from "./models/index.js";
+import { errorHandler, notFoundHandler } from "./middleware/error.middleware.js";
 
 dotenv.config();
 
@@ -63,6 +64,10 @@ app.get("/", (req, res) => {
 
 app.use("/api", router);
 
+// Error handling middleware (must be after all routes)
+app.use(notFoundHandler);
+app.use(errorHandler);
+
 // Socket.io connection handling
 io.on("connection", (socket) => {
   console.log(`🔌 Client connected: ${socket.id}`);
@@ -107,6 +112,33 @@ liquidationMonitor.on("positionLiquidated", (data) => {
     liquidationPrice: data.position.liquidationPrice,
     currentPrice: data.currentPrice,
     collateralLost: data.collateralLost,
+  });
+});
+
+// Listen to position opened events
+workflowExecutor.on("positionOpened", (data) => {
+  io.to(`user-${data.position.userId}`).emit("positionOpened", {
+    positionId: data.position._id,
+    symbol: data.position.symbol,
+    type: data.position.type,
+    entryPrice: data.position.entryPrice,
+    size: data.position.size,
+    leverage: data.position.leverage,
+    collateral: data.position.collateral,
+    liquidationPrice: data.position.liquidationPrice,
+  });
+});
+
+// Listen to position closed events
+workflowExecutor.on("positionClosed", (data) => {
+  io.to(`user-${data.position.userId}`).emit("positionClosed", {
+    positionId: data.position._id,
+    symbol: data.position.symbol,
+    type: data.position.type,
+    entryPrice: data.position.entryPrice,
+    exitPrice: data.position.exitPrice,
+    realizedPnL: data.position.realizedPnL,
+    realizedPnLPercent: data.position.realizedPnLPercent,
   });
 });
 

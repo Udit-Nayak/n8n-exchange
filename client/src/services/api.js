@@ -12,6 +12,45 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Response interceptor for error handling
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // Network errors
+    if (!error.response) {
+      console.error("Network Error:", error.message);
+      return Promise.reject({
+        success: false,
+        error: "Network Error",
+        message: "Unable to connect to server. Please check your connection.",
+      });
+    }
+
+    // Server errors
+    const { status, data } = error.response;
+
+    // Handle specific error codes
+    if (status === 401) {
+      // Unauthorized - clear token and redirect to login
+      if (
+        !window.location.pathname.includes("/login") &&
+        !window.location.pathname.includes("/register")
+      ) {
+        localStorage.removeItem("token");
+        window.location.href = "/login";
+      }
+    }
+
+    // Return structured error
+    return Promise.reject({
+      success: false,
+      error: data?.error || "Error",
+      message: data?.message || error.message,
+      status,
+    });
+  }
+);
+
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 export const authAPI = {
   login: (data) => api.post("/auth/login", data),
@@ -56,6 +95,15 @@ export const priceAPI = {
   getAll: () => api.get("/prices"),
   getBySymbol: (symbol) => api.get(`/prices/${symbol}`),
   getHistory: (symbol, params) => api.get(`/prices/${symbol}/history`, { params }),
+};
+
+// ─── Positions ────────────────────────────────────────────────────────────────
+export const positionAPI = {
+  getAll: (params) => api.get("/positions", { params }),
+  getOpen: () => api.get("/positions/open"),
+  getClosed: (params) => api.get("/positions/closed", { params }),
+  getById: (id) => api.get(`/positions/${id}`),
+  getStats: () => api.get("/positions/stats"),
 };
 
 export default api;

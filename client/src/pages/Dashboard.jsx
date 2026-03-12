@@ -1,10 +1,11 @@
-import { Link, useNavigate } from 'react-router-dom'
-import { useState } from 'react'
-import { useWorkflow } from '../context/WorkflowContext'
-import Topbar from '../components/Topbar/Topbar'
-import PriceWidget from '../components/PriceWidget/PriceWidget'
-import { formatDate, genId } from '../utils/helpers'
-import { NODE_TYPES, getDefaultConfig } from '../constants/nodeTypes'
+import { Link, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { useWorkflow } from "../context/WorkflowContext";
+import Topbar from "../components/Topbar/Topbar";
+import PriceWidget from "../components/PriceWidget/PriceWidget";
+import TradesTable from "../components/TradesTable/TradesTable";
+import { formatDate, genId } from "../utils/helpers";
+import { NODE_TYPES, getDefaultConfig } from "../constants/nodeTypes";
 
 function StatCard({ label, value, color, icon }) {
   return (
@@ -36,12 +37,12 @@ function StatCard({ label, value, color, icon }) {
           pointerEvents: "none",
         }}
       />
-      
+
       {/* Content */}
       <div style={{ position: "relative", zIndex: 1 }}>
-        <div 
-          style={{ 
-            fontSize: 28, 
+        <div
+          style={{
+            fontSize: 28,
             marginBottom: 8,
             filter: `drop-shadow(0 0 8px ${color}40)`,
           }}
@@ -78,7 +79,7 @@ function StatCard({ label, value, color, icon }) {
 }
 
 function WorkflowCard({ workflow, onToggle, onDeleteClick }) {
-  const isActive = workflow.isActive
+  const isActive = workflow.isActive;
 
   return (
     <div
@@ -135,9 +136,7 @@ function WorkflowCard({ workflow, onToggle, onDeleteClick }) {
               {workflow.name}
             </h3>
           </div>
-          <div
-            style={{ color: "var(--text-primary)", fontSize: 10, opacity: 0.6 }}
-          >
+          <div style={{ color: "var(--text-primary)", fontSize: 10, opacity: 0.6 }}>
             Created {formatDate(workflow.createdAt)}
           </div>
         </div>
@@ -177,9 +176,7 @@ function WorkflowCard({ workflow, onToggle, onDeleteClick }) {
           },
         ].map((s) => (
           <div key={s.label}>
-            <div style={{ color: s.color, fontSize: 16, fontWeight: 700 }}>
-              {s.val}
-            </div>
+            <div style={{ color: s.color, fontSize: 16, fontWeight: 700 }}>{s.val}</div>
             <div
               style={{
                 color: "var(--text-primary)",
@@ -195,9 +192,7 @@ function WorkflowCard({ workflow, onToggle, onDeleteClick }) {
         ))}
         {workflow.lastRun && (
           <div style={{ marginLeft: "auto", textAlign: "right" }}>
-            <div style={{ color: "var(--text-secondary)", fontSize: 10 }}>
-              Last run
-            </div>
+            <div style={{ color: "var(--text-secondary)", fontSize: 10 }}>Last run</div>
             <div
               style={{
                 color: "var(--text-primary)",
@@ -293,100 +288,114 @@ function WorkflowCard({ workflow, onToggle, onDeleteClick }) {
 // Quick start workflow templates
 const TEMPLATES = {
   dcaBot: {
-    name: 'DCA Bot',
-    desc: 'Timer → Spot Buy',
-    icon: '⏱',
-    color: '#f59e0b',
+    name: "DCA Bot",
+    desc: "Timer → Spot Buy",
+    icon: "⏱",
+    color: "#f59e0b",
     nodes: [
-      { id: 'n1', type: 'timer', x: 150, y: 200, config: { interval: '60', unit: 'seconds' } },
-      { id: 'n2', type: 'spotBuy', x: 450, y: 200, config: { asset: 'SOL', qty: '0.01' } },
+      { id: "n1", type: "timer", x: 150, y: 200, config: { interval: "60", unit: "seconds" } },
+      { id: "n2", type: "spotBuy", x: 450, y: 200, config: { asset: "SOL", qty: "0.01" } },
     ],
-    edges: [
-      { id: 'e1', from: 'n1', to: 'n2' },
-    ],
+    edges: [{ id: "e1", from: "n1", to: "n2" }],
   },
   stopLoss: {
-    name: 'Stop Loss Guard',
-    desc: 'Price Below → Spot Sell',
-    icon: '🛑',
-    color: '#f97316',
+    name: "Stop Loss Guard",
+    desc: "Price Below → Spot Sell",
+    icon: "🛑",
+    color: "#f97316",
     nodes: [
-      { id: 'n1', type: 'priceBelow', x: 150, y: 200, config: { asset: 'SOL', threshold: '150' } },
-      { id: 'n2', type: 'spotSell', x: 450, y: 200, config: { asset: 'SOL', qty: '0.01' } },
+      { id: "n1", type: "priceBelow", x: 150, y: 200, config: { asset: "SOL", threshold: "150" } },
+      { id: "n2", type: "spotSell", x: 450, y: 200, config: { asset: "SOL", qty: "0.01" } },
     ],
-    edges: [
-      { id: 'e1', from: 'n1', to: 'n2' },
-    ],
+    edges: [{ id: "e1", from: "n1", to: "n2" }],
   },
   takeProfit: {
-    name: 'Take Profit',
-    desc: 'Price Above → Spot Sell',
-    icon: '🎯',
-    color: '#06b6d4',
+    name: "Take Profit",
+    desc: "Price Above → Spot Sell",
+    icon: "🎯",
+    color: "#06b6d4",
     nodes: [
-      { id: 'n1', type: 'priceAbove', x: 150, y: 200, config: { asset: 'SOL', threshold: '200' } },
-      { id: 'n2', type: 'spotSell', x: 450, y: 200, config: { asset: 'SOL', qty: '0.01' } },
+      { id: "n1", type: "priceAbove", x: 150, y: 200, config: { asset: "SOL", threshold: "200" } },
+      { id: "n2", type: "spotSell", x: 450, y: 200, config: { asset: "SOL", qty: "0.01" } },
     ],
-    edges: [
-      { id: 'e1', from: 'n1', to: 'n2' },
-    ],
+    edges: [{ id: "e1", from: "n1", to: "n2" }],
   },
   leverageLong: {
-    name: 'Leverage Long',
-    desc: 'Price Below → Long',
-    icon: '⬆',
-    color: '#22c55e',
+    name: "Leverage Long",
+    desc: "Price Below → Long",
+    icon: "⬆",
+    color: "#22c55e",
     nodes: [
-      { id: 'n1', type: 'priceBelow', x: 150, y: 200, config: { asset: 'SOL', threshold: '150' } },
-      { id: 'n2', type: 'longOrder', x: 450, y: 200, config: { asset: 'SOL', qty: '0.01', leverage: '10x' } },
+      { id: "n1", type: "priceBelow", x: 150, y: 200, config: { asset: "SOL", threshold: "150" } },
+      {
+        id: "n2",
+        type: "longOrder",
+        x: 450,
+        y: 200,
+        config: { asset: "SOL", qty: "0.01", leverage: "10x" },
+      },
     ],
-    edges: [
-      { id: 'e1', from: 'n1', to: 'n2' },
-    ],
+    edges: [{ id: "e1", from: "n1", to: "n2" }],
   },
   hedgeStrategy: {
-    name: 'Hedge Strategy',
-    desc: 'Price Below → Long + Short',
-    icon: '◎',
-    color: '#818cf8',
+    name: "Hedge Strategy",
+    desc: "Price Below → Long + Short",
+    icon: "◎",
+    color: "#818cf8",
     nodes: [
-      { id: 'n1', type: 'priceBelow', x: 150, y: 250, config: { asset: 'SOL', threshold: '150' } },
-      { id: 'n2', type: 'longOrder', x: 450, y: 150, config: { asset: 'SOL', qty: '0.01', leverage: '5x' } },
-      { id: 'n3', type: 'shortOrder', x: 450, y: 350, config: { asset: 'ETH', qty: '0.01', leverage: '2x' } },
+      { id: "n1", type: "priceBelow", x: 150, y: 250, config: { asset: "SOL", threshold: "150" } },
+      {
+        id: "n2",
+        type: "longOrder",
+        x: 450,
+        y: 150,
+        config: { asset: "SOL", qty: "0.01", leverage: "5x" },
+      },
+      {
+        id: "n3",
+        type: "shortOrder",
+        x: 450,
+        y: 350,
+        config: { asset: "ETH", qty: "0.01", leverage: "2x" },
+      },
     ],
     edges: [
-      { id: 'e1', from: 'n1', to: 'n2' },
-      { id: 'e2', from: 'n1', to: 'n3' },
+      { id: "e1", from: "n1", to: "n2" },
+      { id: "e2", from: "n1", to: "n3" },
     ],
   },
   alertBot: {
-    name: 'Alert Bot',
-    desc: 'Timer → Telegram',
-    icon: '📨',
-    color: '#38bdf8',
+    name: "Alert Bot",
+    desc: "Timer → Telegram",
+    icon: "📨",
+    color: "#38bdf8",
     nodes: [
-      { id: 'n1', type: 'timer', x: 150, y: 200, config: { interval: '300', unit: 'seconds' } },
-      { id: 'n2', type: 'telegram', x: 450, y: 200, config: { chatId: '@yourusername', msg: 'Market update alert!' } },
+      { id: "n1", type: "timer", x: 150, y: 200, config: { interval: "300", unit: "seconds" } },
+      {
+        id: "n2",
+        type: "telegram",
+        x: 450,
+        y: 200,
+        config: { chatId: "@yourusername", msg: "Market update alert!" },
+      },
     ],
-    edges: [
-      { id: 'e1', from: 'n1', to: 'n2' },
-    ],
+    edges: [{ id: "e1", from: "n1", to: "n2" }],
   },
-}
+};
 
 export default function Dashboard() {
-  const navigate = useNavigate()
-  const { workflows, toggleWorkflow, deleteWorkflow, saveWorkflow } = useWorkflow()
+  const navigate = useNavigate();
+  const { workflows, toggleWorkflow, deleteWorkflow, saveWorkflow } = useWorkflow();
 
-  const activeCount = workflows.filter(w => w.isActive).length
+  const activeCount = workflows.filter((w) => w.isActive).length;
 
   // Delete modal state
   const [deleteModal, setDeleteModal] = useState({
     isOpen: false,
     type: null, // 'active-warning' or 'confirm'
     workflow: null,
-  })
-  const [confirmNameInput, setConfirmNameInput] = useState('')
+  });
+  const [confirmNameInput, setConfirmNameInput] = useState("");
 
   // Handle delete button click
   const handleDeleteClick = (workflow) => {
@@ -394,19 +403,19 @@ export default function Dashboard() {
     if (workflow.isActive) {
       setDeleteModal({
         isOpen: true,
-        type: 'active-warning',
+        type: "active-warning",
         workflow,
-      })
+      });
     } else {
       // Show confirmation modal
       setDeleteModal({
         isOpen: true,
-        type: 'confirm',
+        type: "confirm",
         workflow,
-      })
-      setConfirmNameInput('')
+      });
+      setConfirmNameInput("");
     }
-  }
+  };
 
   // Close modal
   const closeDeleteModal = () => {
@@ -414,56 +423,56 @@ export default function Dashboard() {
       isOpen: false,
       type: null,
       workflow: null,
-    })
-    setConfirmNameInput('')
-  }
+    });
+    setConfirmNameInput("");
+  };
 
   // Confirm deletion
   const confirmDelete = () => {
     if (confirmNameInput === deleteModal.workflow?.name) {
-      deleteWorkflow(deleteModal.workflow.id)
-      closeDeleteModal()
+      deleteWorkflow(deleteModal.workflow.id);
+      closeDeleteModal();
     }
-  }
+  };
 
   // Handle quick start template click
   const handleTemplateClick = (templateKey) => {
-    const template = TEMPLATES[templateKey]
-    if (!template) return
+    const template = TEMPLATES[templateKey];
+    if (!template) return;
 
-    const workflowId = genId('wf')
+    const workflowId = genId("wf");
     const newWorkflow = {
       id: workflowId,
       name: template.name,
-      nodes: template.nodes.map(node => ({
+      nodes: template.nodes.map((node) => ({
         ...node,
-        id: genId('node'),
+        id: genId("node"),
         config: node.config || getDefaultConfig(node.type),
       })),
       edges: template.edges.map((edge, idx) => ({
         ...edge,
-        id: genId('edge'),
+        id: genId("edge"),
       })),
       isActive: false,
       createdAt: new Date().toISOString(),
       executions: 0,
       lastRun: null,
-    }
+    };
 
     // Update node IDs in edges
-    const nodeIdMap = {}
+    const nodeIdMap = {};
     template.nodes.forEach((templateNode, idx) => {
-      nodeIdMap[templateNode.id] = newWorkflow.nodes[idx].id
-    })
-    newWorkflow.edges = newWorkflow.edges.map(edge => ({
+      nodeIdMap[templateNode.id] = newWorkflow.nodes[idx].id;
+    });
+    newWorkflow.edges = newWorkflow.edges.map((edge) => ({
       ...edge,
       from: nodeIdMap[edge.from],
       to: nodeIdMap[edge.to],
-    }))
+    }));
 
-    saveWorkflow(newWorkflow)
-    navigate(`/builder/${workflowId}`)
-  }
+    saveWorkflow(newWorkflow);
+    navigate(`/builder/${workflowId}`);
+  };
 
   return (
     <div
@@ -500,25 +509,15 @@ export default function Dashboard() {
           >
             Dashboard
           </h1>
-          <p
-            style={{ color: "var(--text-primary)", fontSize: 12, opacity: 0.7 }}
-          >
+          <p style={{ color: "var(--text-primary)", fontSize: 12, opacity: 0.7 }}>
             Manage your automated trading workflows
           </p>
         </div>
 
         {/* Stats and Price Widget */}
         <div style={{ display: "flex", gap: 16 }}>
-          <StatCard
-            label="Total Workflows"
-            value={workflows.length}
-            color="var(--accent-blue)"
-          />
-          <StatCard
-            label="Active Now"
-            value={activeCount}
-            color="var(--accent-green)"
-          />
+          <StatCard label="Total Workflows" value={workflows.length} color="var(--accent-blue)" />
+          <StatCard label="Active Now" value={activeCount} color="var(--accent-green)" />
           <PriceWidget />
         </div>
 
@@ -555,32 +554,29 @@ export default function Dashboard() {
                 borderRadius: "var(--radius-lg)",
               }}
             >
-              <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.3 }}>
-                ⚡
-              </div>
+              <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.3 }}>⚡</div>
               No workflows yet.{" "}
               <Link to="/builder/new" style={{ color: "var(--accent-yellow)", marginRight: 15 }}>
-                Create one 
+                Create one
               </Link>
-
               <Link to="/builder/new">
-            <button
-              style={{
-                background: "linear-gradient(135deg, #f59e0b22, #ef444422)",
-                border: "1px solid var(--accent-yellow)",
-                color: "var(--accent-yellow)",
-                padding: "7px 18px",
-                borderRadius: "var(--radius-sm)",
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: 1,
-                cursor: "pointer",
-                fontFamily: "var(--font-mono)",
-              }}
-            >
-              + NEW WORKFLOW
-            </button>
-          </Link>
+                <button
+                  style={{
+                    background: "linear-gradient(135deg, #f59e0b22, #ef444422)",
+                    border: "1px solid var(--accent-yellow)",
+                    color: "var(--accent-yellow)",
+                    padding: "7px 18px",
+                    borderRadius: "var(--radius-sm)",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: 1,
+                    cursor: "pointer",
+                    fontFamily: "var(--font-mono)",
+                  }}
+                >
+                  + NEW WORKFLOW
+                </button>
+              </Link>
             </div>
           ) : (
             <div
@@ -601,6 +597,9 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+
+        {/* Trades Table */}
+        <TradesTable />
 
         {/* Quick-start guide */}
         <div
@@ -630,30 +629,70 @@ export default function Dashboard() {
             }}
           >
             {[
-              { key: 'dcaBot',         name: 'DCA Bot',          desc: 'Timer → Spot Buy',          icon: '⏱', color: '#f59e0b' },
-              { key: 'stopLoss',       name: 'Stop Loss Guard',  desc: 'Price Below → Spot Sell',   icon: '🛑', color: '#f97316' },
-              { key: 'takeProfit',     name: 'Take Profit',      desc: 'Price Above → Spot Sell',   icon: '🎯', color: '#06b6d4' },
-              { key: 'leverageLong',   name: 'Leverage Long',    desc: 'Price Below → Long',        icon: '⬆', color: '#22c55e' },
-              { key: 'hedgeStrategy',  name: 'Hedge Strategy',   desc: 'Price Below → Long + Short',icon: '◎', color: '#818cf8' },
-              { key: 'alertBot',       name: 'Alert Bot',        desc: 'Timer → Telegram',          icon: '📨', color: '#38bdf8' },
-            ].map(template => (
+              {
+                key: "dcaBot",
+                name: "DCA Bot",
+                desc: "Timer → Spot Buy",
+                icon: "⏱",
+                color: "#f59e0b",
+              },
+              {
+                key: "stopLoss",
+                name: "Stop Loss Guard",
+                desc: "Price Below → Spot Sell",
+                icon: "🛑",
+                color: "#f97316",
+              },
+              {
+                key: "takeProfit",
+                name: "Take Profit",
+                desc: "Price Above → Spot Sell",
+                icon: "🎯",
+                color: "#06b6d4",
+              },
+              {
+                key: "leverageLong",
+                name: "Leverage Long",
+                desc: "Price Below → Long",
+                icon: "⬆",
+                color: "#22c55e",
+              },
+              {
+                key: "hedgeStrategy",
+                name: "Hedge Strategy",
+                desc: "Price Below → Long + Short",
+                icon: "◎",
+                color: "#818cf8",
+              },
+              {
+                key: "alertBot",
+                name: "Alert Bot",
+                desc: "Timer → Telegram",
+                icon: "📨",
+                color: "#38bdf8",
+              },
+            ].map((template) => (
               <div
                 key={template.key}
                 onClick={() => handleTemplateClick(template.key)}
                 style={{
-                  background: 'var(--bg-elevated)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-sm)',
-                  padding: '10px 14px',
-                  cursor: 'pointer',
-                  transition: 'border-color 0.15s',
+                  background: "var(--bg-elevated)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-sm)",
+                  padding: "10px 14px",
+                  cursor: "pointer",
+                  transition: "border-color 0.15s",
                 }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = template.color}
-                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = template.color)}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
               >
                 <div style={{ fontSize: 16, marginBottom: 4 }}>{template.icon}</div>
-                <div style={{ color: 'var(--text-primary)', fontSize: 11, fontWeight: 600 }}>{template.name}</div>
-                <div style={{ color: 'var(--text-faint)', fontSize: 10, marginTop: 2 }}>{template.desc}</div>
+                <div style={{ color: "var(--text-primary)", fontSize: 11, fontWeight: 600 }}>
+                  {template.name}
+                </div>
+                <div style={{ color: "var(--text-faint)", fontSize: 10, marginTop: 2 }}>
+                  {template.desc}
+                </div>
               </div>
             ))}
           </div>
@@ -662,65 +701,81 @@ export default function Dashboard() {
 
       {/* Delete Modals */}
       {deleteModal.isOpen && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.7)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-        }}>
-          <div style={{
-            background: 'var(--bg-surface)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-lg)',
-            padding: 32,
-            maxWidth: 480,
-            width: '90%',
-            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
-          }}>
-            {deleteModal.type === 'active-warning' ? (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.7)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-lg)",
+              padding: 32,
+              maxWidth: 480,
+              width: "90%",
+              boxShadow: "0 20px 60px rgba(0, 0, 0, 0.5)",
+            }}
+          >
+            {deleteModal.type === "active-warning" ? (
               // Active workflow warning
               <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-                  <div style={{
-                    width: 48,
-                    height: 48,
-                    borderRadius: '50%',
-                    background: '#f97316',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 24,
-                  }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+                  <div
+                    style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: "50%",
+                      background: "#f97316",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 24,
+                    }}
+                  >
                     ⚠️
                   </div>
-                  <h2 style={{ color: 'var(--text-primary)', fontSize: 18, fontWeight: 700 }}>
+                  <h2 style={{ color: "var(--text-primary)", fontSize: 18, fontWeight: 700 }}>
                     Cannot Delete Active Workflow
                   </h2>
                 </div>
-                
-                <p style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.6, marginBottom: 20 }}>
-                  The workflow <strong style={{ color: 'var(--accent-yellow)' }}>"{deleteModal.workflow?.name}"</strong> is currently running.
-                  Please deactivate it first before attempting to delete.
+
+                <p
+                  style={{
+                    color: "var(--text-secondary)",
+                    fontSize: 13,
+                    lineHeight: 1.6,
+                    marginBottom: 20,
+                  }}
+                >
+                  The workflow{" "}
+                  <strong style={{ color: "var(--accent-yellow)" }}>
+                    "{deleteModal.workflow?.name}"
+                  </strong>{" "}
+                  is currently running. Please deactivate it first before attempting to delete.
                 </p>
 
-                <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
                   <button
                     onClick={closeDeleteModal}
                     style={{
-                      background: 'linear-gradient(135deg, var(--accent-blue), #3b82f6)',
-                      border: 'none',
-                      color: '#fff',
-                      padding: '10px 24px',
-                      borderRadius: 'var(--radius-sm)',
+                      background: "linear-gradient(135deg, var(--accent-blue), #3b82f6)",
+                      border: "none",
+                      color: "#fff",
+                      padding: "10px 24px",
+                      borderRadius: "var(--radius-sm)",
                       fontSize: 12,
                       fontWeight: 700,
-                      cursor: 'pointer',
+                      cursor: "pointer",
                     }}
                   >
                     OK, Got It
@@ -730,18 +785,25 @@ export default function Dashboard() {
             ) : (
               // Confirmation modal
               <>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                  <h2 style={{ color: 'var(--text-primary)', fontSize: 16, fontWeight: 700 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 20,
+                  }}
+                >
+                  <h2 style={{ color: "var(--text-primary)", fontSize: 16, fontWeight: 700 }}>
                     Delete Workflow: {deleteModal.workflow?.name}
                   </h2>
                   <button
                     onClick={closeDeleteModal}
                     style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--text-muted)',
+                      background: "transparent",
+                      border: "none",
+                      color: "var(--text-muted)",
                       fontSize: 20,
-                      cursor: 'pointer',
+                      cursor: "pointer",
                       padding: 0,
                       width: 28,
                       height: 28,
@@ -751,26 +813,31 @@ export default function Dashboard() {
                   </button>
                 </div>
 
-                <div style={{
-                  background: '#ef444415',
-                  border: '1px solid #ef4444',
-                  borderRadius: 'var(--radius-md)',
-                  padding: '12px 16px',
-                  marginBottom: 20,
-                }}>
-                  <p style={{ color: '#ef4444', fontSize: 12, lineHeight: 1.6, margin: 0 }}>
-                    By deleting this workflow you will also delete all topics attached to the workflow and all attached topic content, images and polls.
+                <div
+                  style={{
+                    background: "#ef444415",
+                    border: "1px solid #ef4444",
+                    borderRadius: "var(--radius-md)",
+                    padding: "12px 16px",
+                    marginBottom: 20,
+                  }}
+                >
+                  <p style={{ color: "#ef4444", fontSize: 12, lineHeight: 1.6, margin: 0 }}>
+                    By deleting this workflow you will also delete all topics attached to the
+                    workflow and all attached topic content, images and polls.
                   </p>
                 </div>
 
                 <div style={{ marginBottom: 20 }}>
-                  <label style={{
-                    display: 'block',
-                    color: 'var(--text-secondary)',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    marginBottom: 8,
-                  }}>
+                  <label
+                    style={{
+                      display: "block",
+                      color: "var(--text-secondary)",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      marginBottom: 8,
+                    }}
+                  >
                     Type the Name of the Workflow to confirm delete:
                   </label>
                   <input
@@ -780,32 +847,32 @@ export default function Dashboard() {
                     placeholder={deleteModal.workflow?.name}
                     autoFocus
                     style={{
-                      width: '100%',
-                      background: 'var(--bg-base)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 'var(--radius-md)',
-                      padding: '12px 16px',
+                      width: "100%",
+                      background: "var(--bg-base)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--radius-md)",
+                      padding: "12px 16px",
                       fontSize: 13,
-                      color: 'var(--text-primary)',
-                      outline: 'none',
+                      color: "var(--text-primary)",
+                      outline: "none",
                     }}
-                    onFocus={(e) => e.target.style.borderColor = '#ef4444'}
-                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    onFocus={(e) => (e.target.style.borderColor = "#ef4444")}
+                    onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
                   />
                 </div>
 
-                <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
                   <button
                     onClick={closeDeleteModal}
                     style={{
-                      background: 'transparent',
-                      border: '1px solid var(--border)',
-                      color: 'var(--text-muted)',
-                      padding: '10px 24px',
-                      borderRadius: 'var(--radius-sm)',
+                      background: "transparent",
+                      border: "1px solid var(--border)",
+                      color: "var(--text-muted)",
+                      padding: "10px 24px",
+                      borderRadius: "var(--radius-sm)",
                       fontSize: 12,
                       fontWeight: 600,
-                      cursor: 'pointer',
+                      cursor: "pointer",
                     }}
                   >
                     Cancel
@@ -814,20 +881,21 @@ export default function Dashboard() {
                     onClick={confirmDelete}
                     disabled={confirmNameInput !== deleteModal.workflow?.name}
                     style={{
-                      background: confirmNameInput === deleteModal.workflow?.name 
-                        ? '#ef4444' 
-                        : 'var(--bg-elevated)',
-                      border: 'none',
-                      color: confirmNameInput === deleteModal.workflow?.name 
-                        ? '#fff' 
-                        : 'var(--text-faint)',
-                      padding: '10px 24px',
-                      borderRadius: 'var(--radius-sm)',
+                      background:
+                        confirmNameInput === deleteModal.workflow?.name
+                          ? "#ef4444"
+                          : "var(--bg-elevated)",
+                      border: "none",
+                      color:
+                        confirmNameInput === deleteModal.workflow?.name
+                          ? "#fff"
+                          : "var(--text-faint)",
+                      padding: "10px 24px",
+                      borderRadius: "var(--radius-sm)",
                       fontSize: 12,
                       fontWeight: 700,
-                      cursor: confirmNameInput === deleteModal.workflow?.name 
-                        ? 'pointer' 
-                        : 'not-allowed',
+                      cursor:
+                        confirmNameInput === deleteModal.workflow?.name ? "pointer" : "not-allowed",
                       opacity: confirmNameInput === deleteModal.workflow?.name ? 1 : 0.5,
                     }}
                   >

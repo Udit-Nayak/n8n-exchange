@@ -774,6 +774,9 @@ class WorkflowExecutor extends EventEmitter {
     // Deduct collateral from user balance
     await user.updateBalance(-collateral);
 
+    // Emit position opened event
+    this.emit("positionOpened", { position: position.toObject() });
+
     console.log(
       `📈 LONG opened: ${quantity} ${symbol} @ $${entryPrice.toFixed(2)} | ${leverage}x leverage | Liq: $${position.liquidationPrice.toFixed(2)}`
     );
@@ -848,6 +851,9 @@ class WorkflowExecutor extends EventEmitter {
     // Deduct collateral from user balance
     await user.updateBalance(-collateral);
 
+    // Emit position opened event
+    this.emit("positionOpened", { position: position.toObject() });
+
     console.log(
       `📉 SHORT opened: ${quantity} ${symbol} @ $${entryPrice.toFixed(2)} | ${leverage}x leverage | Liq: $${position.liquidationPrice.toFixed(2)}`
     );
@@ -910,6 +916,9 @@ class WorkflowExecutor extends EventEmitter {
 
       // Return collateral + PnL to user
       await user.updateBalance(collateralReturned);
+
+      // Emit position closed event
+      this.emit("positionClosed", { position: position.toObject() });
 
       totalPnL += pnl;
       totalCollateralReturned += collateralReturned;
